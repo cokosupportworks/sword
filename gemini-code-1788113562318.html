@@ -1,0 +1,3184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ドキドキ樽ゲーム 3D - 完全版</title>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --primary: #e67e22;
+      --primary-hover: #d35400;
+      --danger: #e74c3c;
+      --danger-hover: #c0392b;
+      --success: #2ecc71;
+      --success-hover: #27ae60;
+      --info: #3498db;
+      --purple: #9b59b6;
+      --panel-bg: rgba(255, 255, 255, 0.95);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      color: #333;
+    }
+
+    /* 背景レイヤー */
+    #bg-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      transition: background 0.4s ease;
+      background: radial-gradient(circle at center, #2c3e50 0%, #1a1a2e 100%);
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      touch-action: none;
+      z-index: 1;
+    }
+
+    /* UIオーバーレイ */
+    .ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
+      z-index: 10;
+    }
+
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: auto;
+    }
+
+    .title-box {
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .title-box h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .status-text {
+      font-size: 0.8rem;
+      color: #f1c40f;
+      margin-top: 2px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      background: var(--panel-bg);
+      border: none;
+      outline: none;
+      padding: 9px 14px;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: #2c3e50;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .btn:hover { background: #fff; transform: translateY(-2px); }
+    .btn:active { transform: translateY(1px); }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: var(--danger-hover); }
+
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { background: var(--success-hover); }
+
+    .btn-info { background: var(--info); color: white; }
+    .btn-purple { background: var(--purple); color: white; }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 0.75rem;
+      border-radius: 6px;
+    }
+
+    .guide-hint {
+      align-self: center;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      padding: 6px 16px;
+      border-radius: 15px;
+      font-size: 0.85rem;
+      pointer-events: auto;
+      animation: bounce 2.2s infinite ease-in-out;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+
+    /* スタート画面オーバーレイ */
+    .start-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: auto;
+      z-index: 20;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .start-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -40%) scale(0.9);
+    }
+
+    .btn-start-game {
+      font-size: 1.35rem;
+      padding: 18px 42px;
+      border-radius: 40px;
+      background: linear-gradient(135deg, #e67e22, #d35400);
+      color: white;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      border: 3px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 10px 35px rgba(230, 126, 34, 0.75), 0 0 20px rgba(255, 255, 255, 0.3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      animation: pulse 1.8s infinite ease-in-out;
+      transition: all 0.2s ease;
+    }
+
+    .btn-start-game:hover {
+      transform: scale(1.06);
+      box-shadow: 0 14px 45px rgba(230, 126, 34, 0.9);
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+
+    /* 飛び出し演出：「もう一度あそぶ」ボタン */
+    .gameover-banner {
+      position: absolute;
+      top: 76%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 500;
+    }
+
+    .gameover-banner.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+      pointer-events: auto;
+    }
+
+    .btn-restart-hero {
+      font-size: 1.1rem;
+      padding: 14px 28px;
+      border-radius: 30px;
+      box-shadow: 0 8px 25px rgba(230, 126, 34, 0.6);
+      background: linear-gradient(135deg, #e67e22, #d35400);
+      color: white;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-restart-hero:hover {
+      transform: translateY(-2px) scale(1.05);
+      box-shadow: 0 12px 30px rgba(230, 126, 34, 0.8);
+    }
+
+    /* トースト通知 */
+    .toast-notification {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-30px);
+      background: rgba(15, 23, 42, 0.95);
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 30px;
+      font-size: 0.88rem;
+      font-weight: bold;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .toast-notification.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* モーダル */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 1000;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      background: #fff;
+      width: 95%;
+      max-width: 640px;
+      border-radius: 20px;
+      padding: 18px 20px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+      transform: translateY(20px);
+      transition: transform 0.25s ease;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-backdrop.open .modal-card { transform: translateY(0); }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 10px;
+    }
+
+    .modal-header h2 { font-size: 1.15rem; color: #2c3e50; }
+
+    .tab-nav {
+      display: flex;
+      gap: 6px;
+      margin: 10px 0;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: #f1f5f9;
+      border: none;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      color: #64748b;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .modal-body {
+      overflow-y: auto;
+      padding-right: 4px;
+      flex: 1;
+    }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .section-title {
+      font-size: 0.88rem;
+      font-weight: bold;
+      color: #34495e;
+      margin: 12px 0 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* サウンドスロットカード */
+    .sound-slot-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sound-slot-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sound-slot-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sound-slot-title { font-size: 0.85rem; font-weight: bold; color: #1e293b; }
+
+    .sound-slot-body {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sound-slot-vol-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.03);
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .sound-slot-vol-row label {
+      font-size: 0.72rem;
+      font-weight: bold;
+      color: #64748b;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .slot-vol-range {
+      flex: 1;
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .val-slot-vol {
+      font-family: monospace;
+      color: var(--primary);
+      width: 34px;
+      display: inline-block;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 20px;
+    }
+
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #cbd5e1;
+      transition: .2s;
+      border-radius: 20px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider { background-color: var(--success); }
+    input:checked + .toggle-slider:before { transform: translateX(18px); }
+
+    .sound-item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    .sound-item-name { font-size: 0.82rem; font-weight: bold; color: #334155; }
+    .sound-item-meta { font-size: 0.7rem; color: #94a3b8; margin-top: 2px; }
+
+    /* 波形・ループエディタ */
+    .editor-container {
+      background: #0f172a;
+      border-radius: 12px;
+      padding: 12px;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    #wave-canvas {
+      width: 100%;
+      height: 85px;
+      background: #1e293b;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .editor-controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .ctrl-box {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .ctrl-box label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .ctrl-box input[type="range"] { width: 100%; }
+
+    .micro-btns {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      justify-content: flex-end;
+    }
+
+    .btn-micro {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 2px 6px;
+      font-size: 0.65rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-micro:hover { background: #475569; }
+
+    .val-display { font-size: 0.72rem; color: #38bdf8; font-family: monospace; }
+    .val-display-loop { font-size: 0.72rem; color: #4ade80; font-family: monospace; }
+
+    /* 背景設定カード */
+    .bg-theme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .bg-theme-btn {
+      height: 44px;
+      border-radius: 10px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: bold;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+      transition: all 0.2s;
+    }
+
+    .bg-theme-btn.active {
+      border-color: #fff;
+      box-shadow: 0 0 0 3px var(--primary);
+      transform: scale(1.05);
+    }
+
+    .bg-pattern-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .bg-pattern-btn {
+      padding: 8px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
+      font-size: 0.78rem;
+      font-weight: bold;
+      color: #334155;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .bg-pattern-btn.active {
+      border-color: var(--primary);
+      background: #fff8f2;
+      color: var(--primary);
+    }
+
+    .bg-album-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .bg-album-card {
+      background: #f8f9fa;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .bg-album-card.active {
+      border-color: var(--primary);
+      background: #fff8f2;
+      box-shadow: 0 0 0 2px rgba(230, 126, 34, 0.3);
+    }
+
+    .bg-thumb {
+      width: 100%;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      margin-bottom: 6px;
+    }
+
+    /* キャラアルバム */
+    .album-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .album-card {
+      background: #f8f9fa;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .album-card.active {
+      border-color: var(--primary);
+      background: #fff8f2;
+      box-shadow: 0 0 0 2px rgba(230, 126, 34, 0.3);
+    }
+
+    .album-imgs { display: flex; gap: 4px; margin-bottom: 6px; }
+
+    .album-thumb {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      background: #fff;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+
+    .album-name {
+      font-size: 0.75rem;
+      font-weight: bold;
+      margin-bottom: 6px;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+    }
+
+    .active-badge {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 0.65rem;
+      padding: 1px 5px;
+      border-radius: 6px;
+      font-weight: bold;
+    }
+
+    /* キャラクター個別微調整パネル */
+    .char-adjust-panel {
+      background: #fdfefe;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    .char-adjust-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .char-adjust-row label {
+      font-size: 0.75rem;
+      font-weight: bold;
+      color: #475569;
+      width: 150px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .char-adjust-row input[type="range"] {
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 0.78rem; font-weight: bold; color: #64748b; margin-bottom: 4px; }
+    .form-input, .select-box {
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .add-form {
+      background: #fdfefe;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    .backup-card {
+      background: #f1f5f9;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+      border: 1px solid #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 背景レイヤー -->
+  <div id="bg-layer"></div>
+
+  <!-- 3Dレンダラー用コンテナ -->
+  <div id="canvas-container"></div>
+
+  <!-- トースト通知 -->
+  <div id="toast-notify" class="toast-notification">
+    <span id="toast-icon">✅</span>
+    <span id="toast-msg">保存しました！</span>
+  </div>
+
+  <!-- ゲーム開始画面オーバーレイ -->
+  <div class="start-overlay" id="start-overlay">
+    <button class="btn-start-game" id="btn-start-game">
+      🎮 ゲーム開始
+    </button>
+  </div>
+
+  <!-- UIオーバーレイ -->
+  <div class="ui-overlay">
+    <div class="header-bar">
+      <div class="title-box">
+        <h1>ドキドキ樽ゲーム 3D</h1>
+        <div class="status-text" id="status-text">ゲーム開始ボタンを押してください</div>
+      </div>
+      <div class="btn-group">
+        <button class="btn" id="btn-sound-master">🔊 全体音</button>
+        <button class="btn" id="btn-settings">⚙️ 設定 / BGM</button>
+        <button class="btn btn-primary" id="btn-reset">🔄 リセット</button>
+      </div>
+    </div>
+
+    <div class="guide-hint">
+      👈 樽をスワイプして回転 / スリットをタップして剣を刺す 👉
+    </div>
+  </div>
+
+  <!-- 飛び出し演出：「もう一度あそぶ」ボタン -->
+  <div class="gameover-banner" id="gameover-banner">
+    <button class="btn-restart-hero" id="btn-restart-banner">
+      🔄 もう一度あそぶ
+    </button>
+  </div>
+
+  <!-- 設定モーダル -->
+  <div class="modal-backdrop" id="modal-settings">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>⚙️ 設定 & カスタマイズ</h2>
+        <button class="btn btn-sm" id="btn-close-modal">✕ 閉じる</button>
+      </div>
+
+      <!-- タブバー -->
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="tab-sound-slots">🔊 サウンド & BGM</button>
+        <button class="tab-btn" data-tab="tab-sound-editor">🎙️ 音声/BGMエディタ</button>
+        <button class="tab-btn" data-tab="tab-characters">👤 キャラアルバム</button>
+        <button class="tab-btn" data-tab="tab-background">🎨 背景設定 & アルバム</button>
+        <button class="tab-btn" data-tab="tab-system">💾 バックアップ & 難易度</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- ================= タブ1: サウンド & BGM設定 ================= -->
+        <div class="tab-pane active" id="tab-sound-slots">
+          <div class="section-title">🎵 場面ごとの音声・再生ON/OFF・音量設定</div>
+
+          <!-- BGM -->
+          <div class="sound-slot-card" style="border-left: 4px solid var(--purple);">
+            <div class="sound-slot-header">
+              <div class="sound-slot-left">
+                <label class="toggle-switch">
+                  <input type="checkbox" class="slot-toggle" data-slot="bgm" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="sound-slot-title">🎶 ゲーム中BGM</div>
+              </div>
+              <button class="btn btn-sm btn-info btn-slot-preview" data-slot="bgm">▶ 試聴</button>
+            </div>
+            <div class="sound-slot-body">
+              <select class="select-box slot-select" data-slot="bgm" style="flex:1; font-size:0.8rem;"></select>
+            </div>
+            <div class="sound-slot-vol-row">
+              <label>🔊 音量: <span class="val-slot-vol" data-slot="bgm">50%</span></label>
+              <input type="range" class="slot-vol-range" data-slot="bgm" min="0" max="1" step="0.05" value="0.5">
+            </div>
+          </div>
+
+          <!-- 刺す音 -->
+          <div class="sound-slot-card">
+            <div class="sound-slot-header">
+              <div class="sound-slot-left">
+                <label class="toggle-switch">
+                  <input type="checkbox" class="slot-toggle" data-slot="insert" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="sound-slot-title">🗡️ 剣を刺した時の音</div>
+              </div>
+              <button class="btn btn-sm btn-info btn-slot-preview" data-slot="insert">▶ 試聴</button>
+            </div>
+            <div class="sound-slot-body">
+              <select class="select-box slot-select" data-slot="insert" style="flex:1; font-size:0.8rem;"></select>
+            </div>
+            <div class="sound-slot-vol-row">
+              <label>🔊 音量: <span class="val-slot-vol" data-slot="insert">70%</span></label>
+              <input type="range" class="slot-vol-range" data-slot="insert" min="0" max="1" step="0.05" value="0.7">
+            </div>
+          </div>
+
+          <!-- 飛び出し音 -->
+          <div class="sound-slot-card">
+            <div class="sound-slot-header">
+              <div class="sound-slot-left">
+                <label class="toggle-switch">
+                  <input type="checkbox" class="slot-toggle" data-slot="jump" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="sound-slot-title">🚀 飛び出した時の音（当たり）</div>
+              </div>
+              <button class="btn btn-sm btn-info btn-slot-preview" data-slot="jump">▶ 試聴</button>
+            </div>
+            <div class="sound-slot-body">
+              <select class="select-box slot-select" data-slot="jump" style="flex:1; font-size:0.8rem;"></select>
+            </div>
+            <div class="sound-slot-vol-row">
+              <label>🔊 音量: <span class="val-slot-vol" data-slot="jump">80%</span></label>
+              <input type="range" class="slot-vol-range" data-slot="jump" min="0" max="1" step="0.05" value="0.8">
+            </div>
+          </div>
+
+          <!-- 着地音 -->
+          <div class="sound-slot-card">
+            <div class="sound-slot-header">
+              <div class="sound-slot-left">
+                <label class="toggle-switch">
+                  <input type="checkbox" class="slot-toggle" data-slot="land" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="sound-slot-title">🦶 樽の上に着地した時の音</div>
+              </div>
+              <button class="btn btn-sm btn-info btn-slot-preview" data-slot="land">▶ 試聴</button>
+            </div>
+            <div class="sound-slot-body">
+              <select class="select-box slot-select" data-slot="land" style="flex:1; font-size:0.8rem;"></select>
+            </div>
+            <div class="sound-slot-vol-row">
+              <label>🔊 音量: <span class="val-slot-vol" data-slot="land">80%</span></label>
+              <input type="range" class="slot-vol-range" data-slot="land" min="0" max="1" step="0.05" value="0.8">
+            </div>
+          </div>
+
+          <div class="section-title" style="margin-top: 14px;">📁 保存されたカスタム音声/BGM一覧</div>
+          <div id="sound-library-list"></div>
+        </div>
+
+        <!-- ================= タブ2: 録音 & 波形・ループエディタ ================= -->
+        <div class="tab-pane" id="tab-sound-editor">
+          <div class="section-title">🎙️ 音声/音楽の録音・ファイル読み込み</div>
+          <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <button class="btn btn-danger" id="btn-record-toggle" style="flex:1;">🔴 マイク録音</button>
+            <label class="btn btn-info" style="flex:1; cursor:pointer; text-align:center;">
+              📁 音楽/音声ファイル選択
+              <input type="file" id="input-audio-file" accept="audio/*" style="display:none;">
+            </label>
+          </div>
+
+          <div class="editor-container">
+            <canvas id="wave-canvas"></canvas>
+
+            <div class="editor-controls-grid">
+              <div class="ctrl-box">
+                <label>
+                  <span>開始トリム:</span>
+                  <span id="val-trim-start" class="val-display">0.000s</span>
+                </label>
+                <input type="range" id="range-trim-start" min="0" max="1" step="0.001" value="0">
+                <div class="micro-btns">
+                  <button class="btn-micro" data-target="start" data-delta="-0.05">-50ms</button>
+                  <button class="btn-micro" data-target="start" data-delta="-0.01">-10ms</button>
+                  <button class="btn-micro" data-target="start" data-delta="0.01">+10ms</button>
+                  <button class="btn-micro" data-target="start" data-delta="0.05">+50ms</button>
+                </div>
+              </div>
+
+              <div class="ctrl-box">
+                <label>
+                  <span>終了トリム:</span>
+                  <span id="val-trim-end" class="val-display">0.000s</span>
+                </label>
+                <input type="range" id="range-trim-end" min="0" max="1" step="0.001" value="1">
+                <div class="micro-btns">
+                  <button class="btn-micro" data-target="end" data-delta="-0.05">-50ms</button>
+                  <button class="btn-micro" data-target="end" data-delta="-0.01">-10ms</button>
+                  <button class="btn-micro" data-target="end" data-delta="0.01">+10ms</button>
+                  <button class="btn-micro" data-target="end" data-delta="0.05">+50ms</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- BGM専用: ループポイント微調整 -->
+            <div style="margin-top:8px; border-top:1px dashed #334155; padding-top:8px;">
+              <div style="font-size:0.75rem; color:#4ade80; font-weight:bold; margin-bottom:4px;">
+                🔁 BGMループ設定（前奏をスキップしてジャンプする位置）
+              </div>
+              <div class="editor-controls-grid">
+                <div class="ctrl-box">
+                  <label>
+                    <span style="color:#4ade80;">ループ開始点 (Loop Start):</span>
+                    <span id="val-loop-start" class="val-display-loop">0.000s</span>
+                  </label>
+                  <input type="range" id="range-loop-start" min="0" max="1" step="0.001" value="0">
+                  <div class="micro-btns">
+                    <button class="btn-micro" data-target="loopStart" data-delta="-0.05">-50ms</button>
+                    <button class="btn-micro" data-target="loopStart" data-delta="-0.01">-10ms</button>
+                    <button class="btn-micro" data-target="loopStart" data-delta="0.01">+10ms</button>
+                    <button class="btn-micro" data-target="loopStart" data-delta="0.05">+50ms</button>
+                  </div>
+                </div>
+
+                <div class="ctrl-box">
+                  <label>
+                    <span style="color:#4ade80;">ループ終了点 (Loop End):</span>
+                    <span id="val-loop-end" class="val-display-loop">0.000s</span>
+                  </label>
+                  <input type="range" id="range-loop-end" min="0" max="1" step="0.001" value="1">
+                  <div class="micro-btns">
+                    <button class="btn-micro" data-target="loopEnd" data-delta="-0.05">-50ms</button>
+                    <button class="btn-micro" data-target="loopEnd" data-delta="-0.01">-10ms</button>
+                    <button class="btn-micro" data-target="loopEnd" data-delta="0.01">+10ms</button>
+                    <button class="btn-micro" data-target="loopEnd" data-delta="0.05">+50ms</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 音量ゲイン -->
+            <div class="ctrl-box" style="margin-top:8px;">
+              <label>
+                <span>音量コントロール（ゲイン）:</span>
+                <span id="val-volume" class="val-display">100%</span>
+              </label>
+              <input type="range" id="range-volume" min="0.1" max="3.0" step="0.05" value="1.0">
+            </div>
+
+            <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+              <button class="btn btn-sm btn-info" id="btn-preview-editor">▶ トリム試聴</button>
+              <button class="btn btn-sm btn-purple" id="btn-preview-loop-test">🔁 ループ繋ぎ目テスト</button>
+              <button class="btn btn-sm" id="btn-stop-editor">⏹ 停止</button>
+            </div>
+          </div>
+
+          <!-- 保存フォーム -->
+          <div class="add-form">
+            <div class="form-group">
+              <label>保存する音声/BGMの名前</label>
+              <input type="text" id="editor-sound-name" class="form-input" placeholder="例: 海賊バトルBGM" maxlength="20">
+            </div>
+            <div class="form-group">
+              <label>すぐにこの場面にセットする（任意）</label>
+              <select id="editor-target-slot" class="select-box">
+                <option value="none">ライブラリに保存のみ</option>
+                <option value="bgm">🎶 ゲーム中BGMに設定</option>
+                <option value="insert">🗡️ 剣を刺す音に設定</option>
+                <option value="jump">🚀 飛び出す音に設定</option>
+                <option value="land">🦶 着地音に設定</option>
+              </select>
+            </div>
+            <button class="btn btn-success" id="btn-save-edited-sound" style="width:100%;">
+              💾 編集した音声/BGMを端末に永続保存する
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= タブ3: キャラクターアルバム & サイズ微調整 ================= -->
+        <div class="tab-pane" id="tab-characters">
+          <div class="section-title">📁 保存されたキャラクター</div>
+          <div class="album-grid" id="album-grid"></div>
+
+          <!-- 選択中キャラクターの微調整パネル -->
+          <div class="section-title">🔍 選択中キャラクターの表示サイズ＆位置調整</div>
+          <div class="char-adjust-panel">
+            <div class="char-adjust-row">
+              <label>
+                <span>拡大・縮小倍率:</span>
+                <span id="val-char-scale" style="color:var(--primary); font-family:monospace;">100%</span>
+              </label>
+              <input type="range" id="range-char-scale" min="0.5" max="2.0" step="0.05" value="1.0">
+            </div>
+            <div class="char-adjust-row" style="margin-top:10px;">
+              <label>
+                <span>通常時の頭出し位置:</span>
+                <span id="val-char-offset" style="color:var(--primary); font-family:monospace;">50%</span>
+              </label>
+              <input type="range" id="range-char-offset" min="0.2" max="0.8" step="0.02" value="0.5">
+            </div>
+            <div style="font-size:0.7rem; color:#64748b; margin-top:6px;">
+              ※ 画像の余白が大きい場合は拡大、通常時に顔が隠れる場合は頭出し位置を調整してください。
+            </div>
+          </div>
+
+          <div class="section-title">➕ 新規キャラクター登録</div>
+          <div class="add-form">
+            <div class="form-group">
+              <label>キャラクター名</label>
+              <input type="text" id="new-char-name" class="form-input" placeholder="例: スライム" maxlength="15">
+            </div>
+            <div style="display:flex; gap:8px;">
+              <div style="flex:1; background:#f8fafc; padding:8px; border-radius:8px; text-align:center;">
+                <label style="font-size:0.75rem; font-weight:bold; color:#64748b;">① 通常時画像（待機時）</label>
+                <input type="file" id="input-new-normal" accept="image/*" style="font-size:0.7rem; width:100%; margin-top:4px;">
+              </div>
+              <div style="flex:1; background:#f8fafc; padding:8px; border-radius:8px; text-align:center;">
+                <label style="font-size:0.75rem; font-weight:bold; color:#64748b;">② 飛び出し画像（当たり時）</label>
+                <input type="file" id="input-new-jump" accept="image/*" style="font-size:0.7rem; width:100%; margin-top:4px;">
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btn-save-character" style="width:100%; margin-top:10px;">
+              ✨ アルバムに登録して使用する
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= タブ4: 背景設定 & 背景アルバム ================= -->
+        <div class="tab-pane" id="tab-background">
+          <div class="section-title">🎨 背景カラー＆グラデーション</div>
+          <div class="bg-theme-grid" id="bg-theme-grid"></div>
+
+          <div class="section-title">✨ 背景パターン・模様</div>
+          <div class="bg-pattern-grid" id="bg-pattern-grid"></div>
+
+          <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>🖼️ 背景画像アルバム</span>
+            <button class="btn btn-sm btn-danger" id="btn-clear-active-bg" style="display:none;">
+              ❌ 画像を解除（テーマ色のみ）
+            </button>
+          </div>
+          <div class="bg-album-grid" id="bg-album-grid"></div>
+
+          <div class="section-title">➕ 新しい背景画像をアルバムに追加</div>
+          <div class="add-form">
+            <div class="form-group">
+              <label>背景の名前</label>
+              <input type="text" id="new-bg-name" class="form-input" placeholder="例: 南国の海" maxlength="15">
+            </div>
+            <div class="form-group">
+              <label>画像ファイルを選択</label>
+              <input type="file" id="input-new-bg-file" accept="image/*" style="font-size:0.8rem; width:100%;">
+            </div>
+            <button class="btn btn-info" id="btn-save-bg-image" style="width:100%;">
+              ✨ 背景アルバムに保存して適用
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= タブ5: バックアップ ＆ システム ================= -->
+        <div class="tab-pane" id="tab-system">
+          <div class="section-title">💾 端末ファイルバックアップ & 復元</div>
+          <div class="backup-card">
+            <p style="font-size:0.78rem; color:#475569; margin-bottom:10px;">
+              登録したすべてのキャラクター・音声・BGM・背景アルバム・各種調整設定を端末ファイル（.json）として書き出したり、読み込んで復元できます。
+            </p>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-info" id="btn-export-backup" style="flex:1;">
+                📥 端末にバックアップ保存
+              </button>
+              <label class="btn btn-purple" style="flex:1; cursor:pointer; text-align:center;">
+                📤 ファイルから復元
+                <input type="file" id="input-import-backup" accept=".json" style="display:none;">
+              </label>
+            </div>
+          </div>
+
+          <div class="section-title">⚙️ ゲーム設定</div>
+          <div class="form-group">
+            <label>スリット数（穴の総数）</label>
+            <select id="select-slots" class="select-box">
+              <option value="12">12 本（短時間）</option>
+              <option value="16" selected>16 本（標準）</option>
+              <option value="20">20 本（じっくり）</option>
+              <option value="24">24 本（大人数向け）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================
+       0. IndexedDB 永続化ストレージ
+       ========================================================== */
+    class AppDatabase {
+      constructor() {
+        this.dbName = 'BarrelGameDB_v5';
+        this.version = 1;
+        this.db = null;
+      }
+
+      async open() {
+        if (this.db) return this.db;
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(this.dbName, this.version);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('characters')) db.createObjectStore('characters', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('sounds')) db.createObjectStore('sounds', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('bgImages')) db.createObjectStore('bgImages', { keyPath: 'id' });
+            if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
+          };
+          req.onsuccess = (e) => {
+            this.db = e.target.result;
+            resolve(this.db);
+          };
+          req.onerror = (e) => reject(e);
+        });
+      }
+
+      async getAll(storeName) {
+        const db = await this.open();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(storeName, 'readonly');
+          const store = tx.objectStore(storeName);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async setItem(storeName, item) {
+        const db = await this.open();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          const req = store.put(item);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async deleteItem(storeName, key) {
+        const db = await this.open();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          const req = store.delete(key);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async getSetting(key, defaultValue) {
+        const db = await this.open();
+        return new Promise((resolve) => {
+          const tx = db.transaction('settings', 'readonly');
+          const store = tx.objectStore('settings');
+          const req = store.get(key);
+          req.onsuccess = () => resolve(req.result ? req.result.value : defaultValue);
+          req.onerror = () => resolve(defaultValue);
+        });
+      }
+
+      async setSetting(key, value) {
+        return this.setItem('settings', { key, value });
+      }
+    }
+
+    const appDB = new AppDatabase();
+
+    function showToast(msg, icon = '✅') {
+      const toast = document.getElementById('toast-notify');
+      document.getElementById('toast-icon').textContent = icon;
+      document.getElementById('toast-msg').textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    /* ==========================================================
+       1. 背景マネージャー ＆ 背景アルバム
+       ========================================================== */
+    class BackgroundManager {
+      constructor() {
+        this.themes = [
+          { id: 'navy', name: 'ネイビー', gradient: 'radial-gradient(circle at center, #2c3e50 0%, #1a1a2e 100%)' },
+          { id: 'sunset', name: 'サンセット', gradient: 'radial-gradient(circle at center, #e67e22 0%, #2c3e50 100%)' },
+          { id: 'ocean', name: 'オーシャン', gradient: 'radial-gradient(circle at center, #1abc9c 0%, #0a3d62 100%)' },
+          { id: 'forest', name: 'フォレスト', gradient: 'radial-gradient(circle at center, #27ae60 0%, #1e3728 100%)' },
+          { id: 'crimson', name: 'クリムゾン', gradient: 'radial-gradient(circle at center, #c0392b 0%, #2c1a1d 100%)' },
+          { id: 'purple', name: 'パープル', gradient: 'radial-gradient(circle at center, #8e44ad 0%, #1a102f 100%)' }
+        ];
+
+        this.patterns = [
+          { id: 'none', name: 'なし (プレーン)', css: '' },
+          { id: 'dots', name: '水玉 (ドット)', css: 'radial-gradient(rgba(255,255,255,0.12) 2px, transparent 2px)' },
+          { id: 'grid', name: 'グリッド (格子)', css: 'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)' },
+          { id: 'stripes', name: 'ストライプ', css: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.04), rgba(255,255,255,0.04) 15px, transparent 15px, transparent 30px)' }
+        ];
+
+        this.bgImages = [];
+        this.settings = {
+          themeId: 'navy',
+          patternId: 'none',
+          activeBgImageId: null
+        };
+      }
+
+      async init() {
+        this.bgImages = await appDB.getAll('bgImages');
+        this.settings = await appDB.getSetting('bgSettings', this.settings);
+        this.apply();
+      }
+
+      async addBgImage(name, dataUrl) {
+        const item = {
+          id: 'bg_' + Date.now(),
+          name: name || 'カスタム背景',
+          dataUrl: dataUrl,
+          createdAt: Date.now()
+        };
+        this.bgImages.push(item);
+        await appDB.setItem('bgImages', item);
+        await this.setActiveBgImage(item.id);
+        return item;
+      }
+
+      async deleteBgImage(id) {
+        this.bgImages = this.bgImages.filter(b => b.id !== id);
+        await appDB.deleteItem('bgImages', id);
+        if (this.settings.activeBgImageId === id) {
+          this.settings.activeBgImageId = null;
+          await appDB.setSetting('bgSettings', this.settings);
+          this.apply();
+        }
+      }
+
+      async setActiveBgImage(id) {
+        this.settings.activeBgImageId = id;
+        await appDB.setSetting('bgSettings', this.settings);
+        this.apply();
+      }
+
+      async clearActiveBgImage() {
+        this.settings.activeBgImageId = null;
+        await appDB.setSetting('bgSettings', this.settings);
+        this.apply();
+      }
+
+      async updateSettings(newSettings) {
+        Object.assign(this.settings, newSettings);
+        await appDB.setSetting('bgSettings', this.settings);
+        this.apply();
+      }
+
+      apply() {
+        const bgLayer = document.getElementById('bg-layer');
+        const theme = this.themes.find(t => t.id === this.settings.themeId) || this.themes[0];
+        const pattern = this.patterns.find(p => p.id === this.settings.patternId) || this.patterns[0];
+
+        let activeImg = null;
+        if (this.settings.activeBgImageId) {
+          activeImg = this.bgImages.find(b => b.id === this.settings.activeBgImageId);
+        }
+
+        let bgStyle = '';
+        if (activeImg) {
+          bgStyle = `url(${activeImg.dataUrl}) center/cover no-repeat, ${theme.gradient}`;
+          bgLayer.style.backgroundSize = 'cover, auto';
+        } else if (pattern.id === 'dots') {
+          bgStyle = `${pattern.css}, ${theme.gradient}`;
+          bgLayer.style.backgroundSize = '24px 24px, auto';
+        } else if (pattern.id === 'grid') {
+          bgStyle = `${pattern.css}, ${theme.gradient}`;
+          bgLayer.style.backgroundSize = '30px 30px, 30px 30px, auto';
+        } else if (pattern.id === 'stripes') {
+          bgStyle = `${pattern.css}, ${theme.gradient}`;
+          bgLayer.style.backgroundSize = 'auto';
+        } else {
+          bgStyle = theme.gradient;
+          bgLayer.style.backgroundSize = 'auto';
+        }
+
+        bgLayer.style.background = bgStyle;
+      }
+    }
+
+    const bgManager = new BackgroundManager();
+
+    /* ==========================================================
+       2. デフォルトキャラクター（高解像度PNG生成）
+       ========================================================== */
+    function generateDefaultCharacterPNG(isJump = false) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 512, 512);
+
+      if (!isJump) {
+        ctx.fillStyle = '#2c3e50';
+        ctx.beginPath();
+        ctx.roundRect(120, 260, 272, 250, 20);
+        ctx.fill();
+
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(220, 260, 72, 250);
+
+        ctx.fillStyle = '#f5b041';
+        ctx.beginPath();
+        ctx.arc(256, 175, 130, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#2c3e50';
+        ctx.beginPath();
+        ctx.arc(195, 160, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(315, 160, 26, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#111111';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(140, 90); ctx.lineTo(390, 210);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#c0392b';
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.arc(256, 210, 45, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath();
+        ctx.moveTo(40, 110);
+        ctx.quadraticCurveTo(256, -50, 472, 110);
+        ctx.quadraticCurveTo(256, 50, 40, 110);
+        ctx.fill();
+
+        ctx.fillStyle = '#f1c40f';
+        ctx.beginPath();
+        ctx.arc(256, 60, 20, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = '#2c3e50';
+        ctx.beginPath();
+        ctx.moveTo(120, 280); ctx.lineTo(20, 180); ctx.lineTo(70, 130); ctx.lineTo(160, 230);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(392, 280); ctx.lineTo(492, 180); ctx.lineTo(442, 130); ctx.lineTo(352, 230);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.roundRect(140, 360, 80, 140, 15);
+        ctx.roundRect(292, 360, 80, 140, 15);
+        ctx.fill();
+
+        ctx.fillStyle = '#e74c3c';
+        ctx.beginPath();
+        ctx.roundRect(120, 240, 272, 150, 20);
+        ctx.fill();
+
+        ctx.fillStyle = '#f5b041';
+        ctx.beginPath();
+        ctx.arc(256, 160, 130, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(190, 140, 32, 0, Math.PI * 2);
+        ctx.arc(322, 140, 32, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(190, 140, 16, 0, Math.PI * 2);
+        ctx.arc(322, 140, 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#2c3e50';
+        ctx.beginPath();
+        ctx.ellipse(256, 230, 35, 45, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath();
+        ctx.moveTo(40, 100);
+        ctx.quadraticCurveTo(256, -60, 472, 100);
+        ctx.quadraticCurveTo(256, 40, 40, 100);
+        ctx.fill();
+
+        ctx.fillStyle = '#3498db';
+        ctx.beginPath();
+        ctx.moveTo(420, 60);
+        ctx.quadraticCurveTo(450, 100, 420, 120);
+        ctx.quadraticCurveTo(390, 100, 420, 60);
+        ctx.fill();
+      }
+
+      return canvas.toDataURL('image/png');
+    }
+
+    const DEFAULT_NORMAL_PNG = generateDefaultCharacterPNG(false);
+    const DEFAULT_JUMP_PNG = generateDefaultCharacterPNG(true);
+
+    /* ==========================================================
+       3. サウンド＆BGM管理 (BGM排他制御＆個別音量)
+       ========================================================== */
+    class SoundManager {
+      constructor() {
+        this.ctx = null;
+        this.masterEnabled = true;
+        this.sounds = [];
+        this.slots = { bgm: 'default', insert: 'default', jump: 'default', land: 'default' };
+        this.toggles = { bgm: true, insert: true, jump: true, land: true };
+        this.volumes = { bgm: 0.5, insert: 0.7, jump: 0.8, land: 0.8 };
+
+        this.bufferCache = new Map();
+        this.bgmSource = null;
+        this.bgmGainNode = null;
+        this.synthBgmInterval = null;
+
+        this.bgmPlayId = 0;
+        this.bgmStartTime = 0;
+        this.bgmPauseOffset = 0;
+        this.isBgmPaused = false;
+        this.currentBgmDuration = 0;
+        this.currentBgmLoopStart = 0;
+        this.currentBgmLoopEnd = 0;
+
+        this.activePreview = null;
+      }
+
+      async init() {
+        this.sounds = await appDB.getAll('sounds');
+        this.slots = await appDB.getSetting('slots', { bgm: 'default', insert: 'default', jump: 'default', land: 'default' });
+        this.toggles = await appDB.getSetting('toggles', { bgm: true, insert: true, jump: true, land: true });
+        this.volumes = await appDB.getSetting('volumes', { bgm: 0.5, insert: 0.7, jump: 0.8, land: 0.8 });
+      }
+
+      initContext() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+          this.bgmGainNode = this.ctx.createGain();
+          this.bgmGainNode.connect(this.ctx.destination);
+          this.updateBGMGain();
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+      }
+
+      updateBGMGain() {
+        if (this.bgmGainNode && this.ctx) {
+          const vol = (this.volumes.bgm !== undefined ? this.volumes.bgm : 0.5) * 0.6;
+          this.bgmGainNode.gain.setValueAtTime(vol, this.ctx.currentTime);
+        }
+      }
+
+      async setVolume(slot, val) {
+        this.volumes[slot] = parseFloat(val);
+        await appDB.setSetting('volumes', this.volumes);
+        if (slot === 'bgm') this.updateBGMGain();
+      }
+
+      async addSound(name, dataUrl, duration, loopStart = 0, loopEnd = null) {
+        const dur = Math.max(0.1, duration);
+        const ls = Math.max(0, Math.min(dur, loopStart || 0));
+        const le = loopEnd !== null ? Math.max(ls + 0.01, Math.min(dur, loopEnd)) : dur;
+
+        const item = {
+          id: 'snd_' + Date.now(),
+          name: name || 'カスタム音声',
+          dataUrl: dataUrl,
+          duration: dur.toFixed(3),
+          loopStart: parseFloat(ls.toFixed(3)),
+          loopEnd: parseFloat(le.toFixed(3)),
+          createdAt: Date.now()
+        };
+        this.sounds.push(item);
+        await appDB.setItem('sounds', item);
+        return item;
+      }
+
+      async deleteSound(id) {
+        this.sounds = this.sounds.filter(s => s.id !== id);
+        this.bufferCache.delete(id);
+        await appDB.deleteItem('sounds', id);
+
+        for (const k in this.slots) {
+          if (this.slots[k] === id) this.slots[k] = 'default';
+        }
+        await appDB.setSetting('slots', this.slots);
+        if (this.slots.bgm === 'default') this.restartBGM();
+      }
+
+      async getAudioBuffer(dataUrl, id) {
+        if (id && this.bufferCache.has(id)) return this.bufferCache.get(id);
+        this.initContext();
+        const res = await fetch(dataUrl);
+        const arrayBuf = await res.arrayBuffer();
+        const audioBuf = await this.ctx.decodeAudioData(arrayBuf);
+        if (id) this.bufferCache.set(id, audioBuf);
+        return audioBuf;
+      }
+
+      /* =================== BGM制御（多重再生完全防止＆確実再開） =================== */
+      async playBGM(offset = 0) {
+        if (!this.masterEnabled || !this.toggles.bgm) {
+          this.stopBGM(false);
+          return;
+        }
+
+        this.initContext();
+        this.isBgmPaused = false;
+        const currentReqId = ++this.bgmPlayId;
+
+        if (this.bgmSource) {
+          try { this.bgmSource.stop(); this.bgmSource.disconnect(); } catch(e) {}
+          this.bgmSource = null;
+        }
+        if (this.synthBgmInterval) {
+          clearInterval(this.synthBgmInterval);
+          this.synthBgmInterval = null;
+        }
+
+        const bgmId = this.slots.bgm;
+
+        if (bgmId && bgmId !== 'default') {
+          const sound = this.sounds.find(s => s.id === bgmId);
+          if (sound) {
+            try {
+              const buf = await this.getAudioBuffer(sound.dataUrl, sound.id);
+
+              if (currentReqId !== this.bgmPlayId) {
+                return;
+              }
+
+              const src = this.ctx.createBufferSource();
+              src.buffer = buf;
+              src.loop = true;
+              src.loopStart = sound.loopStart || 0;
+              src.loopEnd = sound.loopEnd || buf.duration;
+
+              this.currentBgmDuration = buf.duration;
+              this.currentBgmLoopStart = src.loopStart;
+              this.currentBgmLoopEnd = src.loopEnd;
+
+              src.connect(this.bgmGainNode);
+
+              const playStartOffset = offset % buf.duration;
+              src.start(0, playStartOffset);
+
+              this.bgmSource = src;
+              this.bgmStartTime = this.ctx.currentTime - playStartOffset;
+              this.isBgmPaused = false;
+              return;
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+
+        if (currentReqId === this.bgmPlayId) {
+          this.startSynthBGM();
+        }
+      }
+
+      pauseBGM() {
+        this.bgmPlayId++;
+        this.isBgmPaused = true;
+
+        if (this.bgmSource && this.ctx) {
+          let elapsed = this.ctx.currentTime - this.bgmStartTime;
+          const ls = this.currentBgmLoopStart;
+          const le = this.currentBgmLoopEnd;
+          const loopLen = le - ls;
+          if (elapsed > le && loopLen > 0) {
+            elapsed = ls + ((elapsed - le) % loopLen);
+          }
+          this.bgmPauseOffset = Math.max(0, elapsed);
+
+          try {
+            this.bgmSource.stop();
+            this.bgmSource.disconnect();
+          } catch(e) {}
+          this.bgmSource = null;
+        }
+
+        if (this.synthBgmInterval) {
+          clearInterval(this.synthBgmInterval);
+          this.synthBgmInterval = null;
+        }
+      }
+
+      resumeBGM() {
+        const offset = this.bgmPauseOffset || 0;
+        this.isBgmPaused = false;
+        this.playBGM(offset);
+      }
+
+      stopBGM(clearOffset = true) {
+        this.bgmPlayId++;
+
+        if (this.bgmSource) {
+          try {
+            this.bgmSource.stop();
+            this.bgmSource.disconnect();
+          } catch(e) {}
+          this.bgmSource = null;
+        }
+        if (this.synthBgmInterval) {
+          clearInterval(this.synthBgmInterval);
+          this.synthBgmInterval = null;
+        }
+
+        if (clearOffset) {
+          this.isBgmPaused = false;
+          this.bgmPauseOffset = 0;
+        }
+      }
+
+      restartBGM() {
+        this.stopBGM(true);
+        this.playBGM(0);
+      }
+
+      startSynthBGM() {
+        if (this.synthBgmInterval) return;
+        const notes = [220, 261.63, 293.66, 329.63, 392.00, 329.63, 293.66, 261.63];
+        const bassNotes = [110, 110, 130.81, 146.83];
+        let step = 0;
+
+        const playTick = () => {
+          if (!this.masterEnabled || !this.toggles.bgm || !this.ctx) return;
+          const t = this.ctx.currentTime;
+
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(notes[step % notes.length], t);
+          g.gain.setValueAtTime(0.08, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+          osc.connect(g);
+          g.connect(this.bgmGainNode);
+          osc.start(t);
+          osc.stop(t + 0.18);
+
+          if (step % 2 === 0) {
+            const bOsc = this.ctx.createOscillator();
+            const bG = this.ctx.createGain();
+            bOsc.type = 'sine';
+            bOsc.frequency.setValueAtTime(bassNotes[(step / 2) % bassNotes.length], t);
+            bG.gain.setValueAtTime(0.12, t);
+            bG.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+            bOsc.connect(bG);
+            bG.connect(this.bgmGainNode);
+            bOsc.start(t);
+            bOsc.stop(t + 0.35);
+          }
+
+          step++;
+        };
+
+        this.synthBgmInterval = setInterval(playTick, 200);
+        this.isBgmPaused = false;
+      }
+
+      /* =================== 試聴プレビュー =================== */
+      stopAllPreviews() {
+        if (this.activePreview) {
+          try { this.activePreview.source.stop(); } catch(e) {}
+          if (this.activePreview.btn) {
+            this.activePreview.btn.textContent = '▶ 試聴';
+            this.activePreview.btn.classList.replace('btn-danger', 'btn-info');
+          }
+          this.activePreview = null;
+        }
+      }
+
+      async togglePreviewSound(soundId, btnElement) {
+        this.initContext();
+
+        if (this.activePreview && this.activePreview.id === soundId) {
+          this.stopAllPreviews();
+          return;
+        }
+
+        this.stopAllPreviews();
+
+        const sound = this.sounds.find(s => s.id === soundId);
+        if (!sound) return;
+
+        try {
+          const buf = await this.getAudioBuffer(sound.dataUrl, sound.id);
+          const src = this.ctx.createBufferSource();
+          src.buffer = buf;
+
+          const gainNode = this.ctx.createGain();
+          gainNode.gain.value = this.volumes.bgm || 0.5;
+
+          src.connect(gainNode);
+          gainNode.connect(this.ctx.destination);
+
+          btnElement.textContent = '⏹ 停止';
+          btnElement.classList.replace('btn-info', 'btn-danger');
+
+          this.activePreview = { id: soundId, source: src, btn: btnElement };
+
+          src.onended = () => {
+            if (this.activePreview && this.activePreview.source === src) {
+              btnElement.textContent = '▶ 試聴';
+              btnElement.classList.replace('btn-danger', 'btn-info');
+              this.activePreview = null;
+            }
+          };
+
+          src.start(0);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async togglePreviewSlot(slotName, btnElement) {
+        this.initContext();
+
+        if (this.activePreview && this.activePreview.slot === slotName) {
+          this.stopAllPreviews();
+          return;
+        }
+
+        this.stopAllPreviews();
+
+        const soundId = this.slots[slotName];
+
+        if (slotName === 'bgm') {
+          if (soundId && soundId !== 'default') {
+            await this.togglePreviewSound(soundId, btnElement);
+          } else {
+            btnElement.textContent = '⏹ 停止';
+            btnElement.classList.replace('btn-info', 'btn-danger');
+            this.restartBGM();
+            this.activePreview = { slot: 'bgm', btn: btnElement, source: { stop: () => this.stopBGM() } };
+          }
+          return;
+        }
+
+        if (soundId && soundId !== 'default') {
+          await this.togglePreviewSound(soundId, btnElement);
+        } else {
+          this.playSlot(slotName);
+        }
+      }
+
+      /* =================== 各効果音の再生 =================== */
+      playCustomSE(id, slotName) {
+        const sound = this.sounds.find(s => s.id === id);
+        if (!sound) return;
+        this.getAudioBuffer(sound.dataUrl, sound.id).then(buf => {
+          this.initContext();
+          const src = this.ctx.createBufferSource();
+          src.buffer = buf;
+
+          const gainNode = this.ctx.createGain();
+          gainNode.gain.value = this.volumes[slotName] !== undefined ? this.volumes[slotName] : 0.8;
+
+          src.connect(gainNode);
+          gainNode.connect(this.ctx.destination);
+          src.start();
+        });
+      }
+
+      playDefaultInsert() {
+        this.initContext();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const vol = this.volumes.insert !== undefined ? this.volumes.insert : 0.7;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(420, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.4 * vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.1);
+      }
+
+      playDefaultJump() {
+        this.initContext();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const vol = this.volumes.jump !== undefined ? this.volumes.jump : 0.8;
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(240, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.6 * vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.4);
+      }
+
+      playDefaultLand() {
+        this.initContext();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const vol = this.volumes.land !== undefined ? this.volumes.land : 0.8;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.5 * vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.15);
+      }
+
+      playSlot(slotName) {
+        if (!this.masterEnabled || !this.toggles[slotName]) return;
+        const soundId = this.slots[slotName];
+        if (soundId && soundId !== 'default') {
+          this.playCustomSE(soundId, slotName);
+        } else {
+          if (slotName === 'insert') this.playDefaultInsert();
+          else if (slotName === 'jump') this.playDefaultJump();
+          else if (slotName === 'land') this.playDefaultLand();
+        }
+      }
+    }
+
+    const soundManager = new SoundManager();
+
+    /* ==========================================================
+       4. 音声録音 ＆ 波形・ループエディタ
+       ========================================================== */
+    class AudioEditor {
+      constructor(soundMgr) {
+        this.soundMgr = soundMgr;
+        this.audioBuffer = null;
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.isRecording = false;
+
+        this.canvas = document.getElementById('wave-canvas');
+        this.ctx2d = this.canvas.getContext('2d');
+
+        this.rangeStart = document.getElementById('range-trim-start');
+        this.rangeEnd = document.getElementById('range-trim-end');
+        this.rangeLoopStart = document.getElementById('range-loop-start');
+        this.rangeLoopEnd = document.getElementById('range-loop-end');
+        this.rangeVol = document.getElementById('range-volume');
+
+        this.valStart = document.getElementById('val-trim-start');
+        this.valEnd = document.getElementById('val-trim-end');
+        this.valLoopStart = document.getElementById('val-loop-start');
+        this.valLoopEnd = document.getElementById('val-loop-end');
+        this.valVol = document.getElementById('val-volume');
+
+        this.currentPreviewSrc = null;
+        this.initEvents();
+      }
+
+      initEvents() {
+        const updateUI = () => {
+          if (!this.audioBuffer) return;
+          const dur = this.audioBuffer.duration;
+
+          let s = parseFloat(this.rangeStart.value) * dur;
+          let e = parseFloat(this.rangeEnd.value) * dur;
+          if (s >= e) {
+            s = Math.max(0, e - 0.01);
+            this.rangeStart.value = s / dur;
+          }
+
+          let ls = parseFloat(this.rangeLoopStart.value) * dur;
+          let le = parseFloat(this.rangeLoopEnd.value) * dur;
+          if (ls >= le) {
+            ls = Math.max(0, le - 0.01);
+            this.rangeLoopStart.value = ls / dur;
+          }
+
+          this.valStart.textContent = s.toFixed(3) + 's';
+          this.valEnd.textContent = e.toFixed(3) + 's';
+          this.valLoopStart.textContent = ls.toFixed(3) + 's';
+          this.valLoopEnd.textContent = le.toFixed(3) + 's';
+          this.valVol.textContent = Math.round(parseFloat(this.rangeVol.value) * 100) + '%';
+
+          this.drawWaveform();
+        };
+
+        this.rangeStart.addEventListener('input', updateUI);
+        this.rangeEnd.addEventListener('input', updateUI);
+        this.rangeLoopStart.addEventListener('input', updateUI);
+        this.rangeLoopEnd.addEventListener('input', updateUI);
+        this.rangeVol.addEventListener('input', updateUI);
+
+        document.querySelectorAll('.btn-micro').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            if (!this.audioBuffer) return;
+            const target = e.target.getAttribute('data-target');
+            const delta = parseFloat(e.target.getAttribute('data-delta'));
+            const dur = this.audioBuffer.duration;
+
+            let elem = this.rangeStart;
+            if (target === 'end') elem = this.rangeEnd;
+            else if (target === 'loopStart') elem = this.rangeLoopStart;
+            else if (target === 'loopEnd') elem = this.rangeLoopEnd;
+
+            let curSec = parseFloat(elem.value) * dur;
+            curSec = Math.max(0, Math.min(dur, curSec + delta));
+            elem.value = curSec / dur;
+            updateUI();
+          });
+        });
+
+        document.getElementById('btn-record-toggle').addEventListener('click', () => this.toggleRecording());
+        document.getElementById('input-audio-file').addEventListener('change', (e) => {
+          if (e.target.files[0]) this.loadFile(e.target.files[0]);
+        });
+
+        document.getElementById('btn-preview-editor').addEventListener('click', () => this.previewTrimmed());
+        document.getElementById('btn-preview-loop-test').addEventListener('click', () => this.previewLoopTest());
+        document.getElementById('btn-stop-editor').addEventListener('click', () => this.stopPreview());
+        document.getElementById('btn-save-edited-sound').addEventListener('click', () => this.saveEditedSound());
+      }
+
+      async toggleRecording() {
+        const btn = document.getElementById('btn-record-toggle');
+        if (!this.isRecording) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.mediaRecorder = new MediaRecorder(stream);
+            this.audioChunks = [];
+            this.mediaRecorder.ondataavailable = (e) => this.audioChunks.push(e.data);
+            this.mediaRecorder.onstop = async () => {
+              const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+              const arrayBuf = await audioBlob.arrayBuffer();
+              this.soundMgr.initContext();
+              this.audioBuffer = await this.soundMgr.ctx.decodeAudioData(arrayBuf);
+              this.onBufferLoaded();
+            };
+            this.mediaRecorder.start();
+            this.isRecording = true;
+            btn.textContent = '⏹ 録音ストップ';
+            btn.classList.replace('btn-danger', 'btn-success');
+          } catch (err) {
+            alert('マイクへのアクセスが許可されていません: ' + err.message);
+          }
+        } else {
+          this.mediaRecorder.stop();
+          this.isRecording = false;
+          btn.textContent = '🔴 マイク録音';
+          btn.classList.replace('btn-success', 'btn-danger');
+        }
+      }
+
+      async loadFile(file) {
+        const arrayBuf = await file.arrayBuffer();
+        this.soundMgr.initContext();
+        this.audioBuffer = await this.soundMgr.ctx.decodeAudioData(arrayBuf);
+        this.onBufferLoaded();
+      }
+
+      onBufferLoaded() {
+        this.rangeStart.value = 0;
+        this.rangeEnd.value = 1;
+        this.rangeLoopStart.value = 0;
+        this.rangeLoopEnd.value = 1;
+        this.rangeVol.value = 1.0;
+
+        const dur = this.audioBuffer.duration;
+        this.valStart.textContent = '0.000s';
+        this.valEnd.textContent = dur.toFixed(3) + 's';
+        this.valLoopStart.textContent = '0.000s';
+        this.valLoopEnd.textContent = dur.toFixed(3) + 's';
+        this.valVol.textContent = '100%';
+
+        this.drawWaveform();
+      }
+
+      drawWaveform() {
+        if (!this.audioBuffer) return;
+        const w = this.canvas.width = this.canvas.clientWidth * window.devicePixelRatio;
+        const h = this.canvas.height = this.canvas.clientHeight * window.devicePixelRatio;
+        const ctx = this.ctx2d;
+        ctx.clearRect(0, 0, w, h);
+
+        const data = this.audioBuffer.getChannelData(0);
+        const step = Math.ceil(data.length / w);
+        const amp = h / 2;
+        const gain = parseFloat(this.rangeVol.value);
+
+        const startX = parseFloat(this.rangeStart.value) * w;
+        const endX = parseFloat(this.rangeEnd.value) * w;
+        const loopStartX = parseFloat(this.rangeLoopStart.value) * w;
+        const loopEndX = parseFloat(this.rangeLoopEnd.value) * w;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fillRect(0, 0, startX, h);
+        ctx.fillRect(endX, 0, w - endX, h);
+
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+        ctx.fillRect(startX, 0, endX - startX, h);
+
+        ctx.fillStyle = 'rgba(74, 222, 128, 0.2)';
+        ctx.fillRect(loopStartX, 0, loopEndX - loopStartX, h);
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.beginPath();
+        for (let i = 0; i < w; i++) {
+          let min = 1.0, max = -1.0;
+          for (let j = 0; j < step; j++) {
+            const datum = data[(i * step) + j];
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
+          }
+          const y1 = (1 + min * gain) * amp;
+          const y2 = (1 + max * gain) * amp;
+          ctx.moveTo(i, y1);
+          ctx.lineTo(i, y2);
+        }
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(startX, 0); ctx.lineTo(startX, h);
+        ctx.moveTo(endX, 0); ctx.lineTo(endX, h);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(loopStartX, 0); ctx.lineTo(loopStartX, h);
+        ctx.moveTo(loopEndX, 0); ctx.lineTo(loopEndX, h);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      stopPreview() {
+        if (this.currentPreviewSrc) {
+          try { this.currentPreviewSrc.stop(); } catch(e){}
+          this.currentPreviewSrc = null;
+        }
+      }
+
+      previewTrimmed() {
+        if (!this.audioBuffer) return;
+        this.stopPreview();
+        this.soundMgr.initContext();
+
+        const dur = this.audioBuffer.duration;
+        const s = parseFloat(this.rangeStart.value) * dur;
+        const e = parseFloat(this.rangeEnd.value) * dur;
+        const ls = parseFloat(this.rangeLoopStart.value) * dur;
+        const le = parseFloat(this.rangeLoopEnd.value) * dur;
+        const gainVal = parseFloat(this.rangeVol.value);
+
+        const src = this.soundMgr.ctx.createBufferSource();
+        src.buffer = this.audioBuffer;
+        src.loop = true;
+        src.loopStart = Math.max(s, ls);
+        src.loopEnd = Math.min(e, le);
+
+        const gainNode = this.soundMgr.ctx.createGain();
+        gainNode.gain.value = gainVal;
+
+        src.connect(gainNode);
+        gainNode.connect(this.soundMgr.ctx.destination);
+        src.start(0, s);
+        this.currentPreviewSrc = src;
+      }
+
+      previewLoopTest() {
+        if (!this.audioBuffer) return;
+        this.stopPreview();
+        this.soundMgr.initContext();
+
+        const dur = this.audioBuffer.duration;
+        const ls = parseFloat(this.rangeLoopStart.value) * dur;
+        const le = parseFloat(this.rangeLoopEnd.value) * dur;
+        const gainVal = parseFloat(this.rangeVol.value);
+
+        const src = this.soundMgr.ctx.createBufferSource();
+        src.buffer = this.audioBuffer;
+        src.loop = true;
+        src.loopStart = ls;
+        src.loopEnd = le;
+
+        const gainNode = this.soundMgr.ctx.createGain();
+        gainNode.gain.value = gainVal;
+
+        src.connect(gainNode);
+        gainNode.connect(this.soundMgr.ctx.destination);
+
+        const testStart = Math.max(ls, le - 1.5);
+        src.start(0, testStart);
+        this.currentPreviewSrc = src;
+      }
+
+      exportWavDataUrl() {
+        const dur = this.audioBuffer.duration;
+        const sampleRate = this.audioBuffer.sampleRate;
+        const sSample = Math.floor(parseFloat(this.rangeStart.value) * dur * sampleRate);
+        const eSample = Math.floor(parseFloat(this.rangeEnd.value) * dur * sampleRate);
+        const numSamples = Math.max(1, eSample - sSample);
+        const gain = parseFloat(this.rangeVol.value);
+
+        const numOfChan = 1;
+        const length = numSamples * numOfChan * 2 + 44;
+        const out = new DataView(new ArrayBuffer(length));
+        let pos = 0;
+
+        const setUint16 = (d) => { out.setUint16(pos, d, true); pos += 2; };
+        const setUint32 = (d) => { out.setUint32(pos, d, true); pos += 4; };
+
+        setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+        setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+        setUint32(sampleRate); setUint32(sampleRate * 2 * numOfChan);
+        setUint16(numOfChan * 2); setUint16(16);
+        setUint32(0x61746164); setUint32(length - pos - 4);
+
+        const channelData = this.audioBuffer.getChannelData(0);
+        for (let i = 0; i < numSamples; i++) {
+          let sample = channelData[sSample + i] * gain;
+          sample = Math.max(-1, Math.min(1, sample));
+          sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+          out.setInt16(pos, sample, true);
+          pos += 2;
+        }
+
+        const blob = new Blob([out], { type: 'audio/wav' });
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      async saveEditedSound() {
+        if (!this.audioBuffer) {
+          alert('音声が読み込まれていません。');
+          return;
+        }
+        const nameInput = document.getElementById('editor-sound-name');
+        const targetSlot = document.getElementById('editor-target-slot').value;
+        const name = nameInput.value.trim() || 'カスタム音声';
+
+        const dur = this.audioBuffer.duration;
+        const s = parseFloat(this.rangeStart.value) * dur;
+        const e = parseFloat(this.rangeEnd.value) * dur;
+        const ls = parseFloat(this.rangeLoopStart.value) * dur;
+        const le = parseFloat(this.rangeLoopEnd.value) * dur;
+
+        const relativeLoopStart = Math.max(0, Math.min(e - s, ls - s));
+        const relativeLoopEnd = Math.max(relativeLoopStart + 0.01, Math.min(e - s, le - s));
+
+        const dataUrl = await this.exportWavDataUrl();
+        const newSound = await this.soundMgr.addSound(name, dataUrl, e - s, relativeLoopStart, relativeLoopEnd);
+
+        if (targetSlot !== 'none') {
+          this.soundMgr.slots[targetSlot] = newSound.id;
+          await appDB.setSetting('slots', this.soundMgr.slots);
+          if (targetSlot === 'bgm' && game.isGameStarted) this.soundMgr.restartBGM();
+        }
+
+        nameInput.value = '';
+        showToast(`「${name}」を端末に保存しました！`, '💾');
+
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        const soundTabBtn = document.querySelector('.tab-btn[data-tab="tab-sound-slots"]');
+        if (soundTabBtn) soundTabBtn.classList.add('active');
+        document.getElementById('tab-sound-slots').classList.add('active');
+
+        renderSoundSettings();
+      }
+    }
+
+    /* ==========================================================
+       5. キャラクターアルバム管理 (アスペクト比＆サイズ調整対応)
+       ========================================================== */
+    class CharacterAlbum {
+      constructor() {
+        this.characters = [];
+        this.activeId = 'default';
+      }
+
+      async init() {
+        this.characters = await appDB.getAll('characters');
+        if (this.characters.length === 0) {
+          const def = {
+            id: 'default',
+            name: 'デフォルト海賊',
+            normalImg: DEFAULT_NORMAL_PNG,
+            jumpImg: DEFAULT_JUMP_PNG,
+            normalAspect: 1.0,
+            jumpAspect: 1.0,
+            scale: 1.0,
+            normalOffsetY: 0.5,
+            isDefault: true
+          };
+          this.characters.push(def);
+          await appDB.setItem('characters', def);
+        }
+        this.activeId = await appDB.getSetting('activeCharId', 'default');
+        if (!this.getCharacter(this.activeId)) this.activeId = 'default';
+      }
+
+      getCharacter(id) {
+        return this.characters.find(c => c.id === id) || this.characters[0];
+      }
+
+      getActiveCharacter() {
+        return this.getCharacter(this.activeId);
+      }
+
+      async setActiveCharacter(id) {
+        if (this.getCharacter(id)) {
+          this.activeId = id;
+          await appDB.setSetting('activeCharId', id);
+        }
+      }
+
+      async addCharacter(name, normalData, jumpData) {
+        const newChar = {
+          id: 'char_' + Date.now(),
+          name: name || 'カスタムキャラ',
+          normalImg: normalData.dataUrl,
+          jumpImg: jumpData ? jumpData.dataUrl : normalData.dataUrl,
+          normalAspect: normalData.aspect || 1.0,
+          jumpAspect: jumpData ? jumpData.aspect : (normalData.aspect || 1.0),
+          scale: 1.0,
+          normalOffsetY: 0.5,
+          isDefault: false
+        };
+        this.characters.push(newChar);
+        await appDB.setItem('characters', newChar);
+        await this.setActiveCharacter(newChar.id);
+        return newChar;
+      }
+
+      async updateActiveSettings(settings) {
+        const active = this.getActiveCharacter();
+        if (!active) return;
+        Object.assign(active, settings);
+        await appDB.setItem('characters', active);
+      }
+
+      async deleteCharacter(id) {
+        if (id === 'default') return;
+        this.characters = this.characters.filter(c => c.id !== id);
+        await appDB.deleteItem('characters', id);
+        if (this.activeId === id) await this.setActiveCharacter('default');
+      }
+
+      static compressImage(file, maxSize = 600) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const aspect = img.width / img.height;
+              const canvas = document.createElement('canvas');
+              let w = img.width, h = img.height;
+              if (w > h && w > maxSize) { h = Math.round((h * maxSize) / w); w = maxSize; }
+              else if (h > maxSize) { w = Math.round((w * maxSize) / h); h = maxSize; }
+              canvas.width = w; canvas.height = h;
+              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              resolve({ dataUrl: canvas.toDataURL('image/png', 0.9), aspect: aspect });
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+    }
+
+    const album = new CharacterAlbum();
+
+    /* ==========================================================
+       6. 3Dゲームマネージャー (アスペクト比＆スケール動的適用)
+       ========================================================== */
+    class PirateGame {
+      constructor() {
+        this.container = document.getElementById('canvas-container');
+        this.totalSlots = 16;
+        this.hitSlotIndex = -1;
+        this.usedSlots = new Set();
+        this.isGameOver = false;
+        this.isJumping = false;
+        this.isGameStarted = false;
+      }
+
+      async init() {
+        this.totalSlots = await appDB.getSetting('totalSlots', 16);
+        document.getElementById('select-slots').value = this.totalSlots;
+
+        this.initThree();
+        this.buildScene();
+        this.initEvents();
+        this.resetGame(false);
+        this.animate();
+      }
+
+      initThree() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.set(0, 2.6, 8.6);
+        this.camera.lookAt(0, 0.4, 0);
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.container.appendChild(this.renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+        this.scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+        dirLight.position.set(5, 12, 7);
+        dirLight.castShadow = true;
+        this.scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0x8bc34a, 0.25);
+        fillLight.position.set(-5, -2, -5);
+        this.scene.add(fillLight);
+
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+
+        this.mainGroup = new THREE.Group();
+        this.scene.add(this.mainGroup);
+
+        this.barrelSubGroup = new THREE.Group();
+        this.mainGroup.add(this.barrelSubGroup);
+
+        const shadowPlane = new THREE.Mesh(
+          new THREE.PlaneGeometry(10, 10),
+          new THREE.ShadowMaterial({ opacity: 0.25 })
+        );
+        shadowPlane.rotation.x = -Math.PI / 2;
+        shadowPlane.position.y = -1.8;
+        shadowPlane.receiveShadow = true;
+        this.scene.add(shadowPlane);
+      }
+
+      // 通常時ジオメトリ（アスペクト比維持 ＆ 頭出し位置オフセット適用）
+      createNormalGeometry() {
+        const char = album.getActiveCharacter();
+        const aspect = char.normalAspect || 1.0;
+        const scale = char.scale || 1.0;
+        const offsetY = char.normalOffsetY !== undefined ? char.normalOffsetY : 0.5;
+
+        const baseH = 2.0 * scale;
+        const visibleH = baseH * (1 - offsetY);
+        const w = (baseH * aspect);
+
+        const geo = new THREE.PlaneGeometry(w, visibleH);
+        geo.translate(0, visibleH / 2, 0); // 足元原点
+
+        const uv = geo.attributes.uv;
+        for (let i = 0; i < uv.count; i++) {
+          const v = uv.getY(i);
+          uv.setY(i, offsetY + v * (1 - offsetY));
+        }
+        uv.needsUpdate = true;
+        return geo;
+      }
+
+      // 飛び出し時ジオメトリ（アスペクト比維持）
+      createJumpGeometry() {
+        const char = album.getActiveCharacter();
+        const aspect = char.jumpAspect || char.normalAspect || 1.0;
+        const scale = char.scale || 1.0;
+
+        const baseH = 2.8 * scale;
+        const w = baseH * aspect;
+
+        const geo = new THREE.PlaneGeometry(w, baseH);
+        geo.translate(0, baseH / 2, 0); // 足元原点
+        return geo;
+      }
+
+      buildScene() {
+        this.barrelSubGroup.clear();
+
+        const barrelGeo = new THREE.CylinderGeometry(1.6, 1.6, 3.2, 32);
+        const barrelMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.6, metalness: 0.1 });
+        const barrelBody = new THREE.Mesh(barrelGeo, barrelMat);
+        barrelBody.castShadow = true;
+        barrelBody.receiveShadow = true;
+        this.barrelSubGroup.add(barrelBody);
+
+        const topCap = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.58, 1.58, 0.05, 32),
+          new THREE.MeshStandardMaterial({ color: 0x5c2c16 })
+        );
+        topCap.position.y = 1.6;
+        this.barrelSubGroup.add(topCap);
+
+        const ringMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.3 });
+        [-1.2, -0.4, 0.4, 1.2].forEach(y => {
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.62, 0.1, 32), ringMat);
+          ring.position.y = y;
+          this.barrelSubGroup.add(ring);
+        });
+
+        if (this.charPlane) {
+          this.mainGroup.remove(this.charPlane);
+        }
+        this.loader = new THREE.TextureLoader();
+        this.charMaterial = new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide });
+        this.charPlane = new THREE.Mesh(this.createNormalGeometry(), this.charMaterial);
+        this.charPlane.position.set(0, 1.6, 0);
+        this.mainGroup.add(this.charPlane);
+
+        this.applyActiveCharacter();
+
+        this.slots = [];
+        this.slotHitBoxes = [];
+        const radius = 1.61;
+        const rows = 2;
+        const slotsPerRow = this.totalSlots / rows;
+
+        for (let i = 0; i < this.totalSlots; i++) {
+          const row = Math.floor(i / slotsPerRow);
+          const col = i % slotsPerRow;
+          const angle = (col / slotsPerRow) * (Math.PI * 2) + (row * (Math.PI / slotsPerRow));
+          const y = row === 0 ? 0.7 : -0.7;
+
+          const slot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.4, 0.05), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+          slot.position.set(Math.sin(angle) * radius, y, Math.cos(angle) * radius);
+          slot.rotation.y = angle;
+
+          const hitBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), new THREE.MeshBasicMaterial({ visible: false }));
+          hitBox.position.copy(slot.position);
+          hitBox.rotation.copy(slot.rotation);
+          hitBox.userData = { slotIndex: i, angle: angle, y: y };
+
+          this.barrelSubGroup.add(slot);
+          this.barrelSubGroup.add(hitBox);
+          this.slots.push({ mesh: slot, insertedSword: null });
+          this.slotHitBoxes.push(hitBox);
+        }
+      }
+
+      applyActiveCharacter() {
+        const char = album.getActiveCharacter();
+        if (this.charPlane.geometry) this.charPlane.geometry.dispose();
+        this.charPlane.geometry = this.createNormalGeometry();
+        this.charPlane.position.set(0, 1.6, 0);
+        this.charPlane.rotation.set(0, 0, 0);
+        this.updateTexture(char.normalImg);
+      }
+
+      updateTexture(dataUrl) {
+        this.loader.load(dataUrl, (tex) => {
+          this.charMaterial.map = tex;
+          this.charMaterial.needsUpdate = true;
+        });
+      }
+
+      startGame() {
+        this.isGameStarted = true;
+        document.getElementById('start-overlay').classList.add('hidden');
+        soundManager.initContext();
+        soundManager.playBGM(0);
+        this.updateUI();
+      }
+
+      resetGame(autoPlayBGM = true) {
+        this.isGameOver = false;
+        this.isJumping = false;
+        this.usedSlots.clear();
+        this.hitSlotIndex = Math.floor(Math.random() * this.totalSlots);
+
+        this.slots.forEach(s => {
+          if (s.insertedSword) {
+            this.barrelSubGroup.remove(s.insertedSword);
+            s.insertedSword = null;
+          }
+        });
+
+        this.barrelSubGroup.scale.set(1, 1, 1);
+        this.barrelSubGroup.position.set(0, 0, 0);
+
+        this.applyActiveCharacter();
+        this.charPlane.scale.set(1, 1, 1);
+
+        document.getElementById('gameover-banner').classList.remove('show');
+        this.updateUI();
+
+        if (this.isGameStarted && autoPlayBGM) {
+          soundManager.resumeBGM();
+        }
+      }
+
+      insertSword(hitBox) {
+        if (!this.isGameStarted) {
+          this.startGame();
+          return;
+        }
+
+        const index = hitBox.userData.slotIndex;
+        if (this.usedSlots.has(index) || this.isGameOver || this.isJumping) return;
+
+        this.usedSlots.add(index);
+        soundManager.playSlot('insert');
+
+        const swordGroup = new THREE.Group();
+        const blade = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 0.28, 1.2),
+          new THREE.MeshStandardMaterial({
+            color: ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6'][index % 5],
+            metalness: 0.4,
+            roughness: 0.3
+          })
+        );
+        blade.position.z = 0.6;
+        swordGroup.add(blade);
+
+        const hilt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.12, 0.3, 8),
+          new THREE.MeshStandardMaterial({ color: 0xd35400 })
+        );
+        hilt.rotation.x = Math.PI / 2;
+        hilt.position.z = 1.25;
+        swordGroup.add(hilt);
+
+        const angle = hitBox.userData.angle;
+        const y = hitBox.userData.y;
+        swordGroup.position.set(Math.sin(angle) * 1.6, y, Math.cos(angle) * 1.6);
+        swordGroup.rotation.y = angle;
+
+        this.barrelSubGroup.add(swordGroup);
+        this.slots[index].insertedSword = swordGroup;
+
+        if (index === this.hitSlotIndex) {
+          this.triggerPopOutAndLand();
+        } else {
+          this.updateUI();
+        }
+      }
+
+      triggerPopOutAndLand() {
+        this.isGameOver = true;
+        this.isJumping = true;
+
+        soundManager.pauseBGM();
+        soundManager.playSlot('jump');
+
+        if (this.charPlane.geometry) this.charPlane.geometry.dispose();
+        this.charPlane.geometry = this.createJumpGeometry();
+        const char = album.getActiveCharacter();
+        this.updateTexture(char.jumpImg);
+
+        const startY = 1.6;
+        const targetLandY = -0.2;
+        const targetBarrelY = -1.0;
+        const peakHeight = 3.5;
+        const startTime = performance.now();
+        const duration = 1.5;
+        let hasLandedSoundPlayed = false;
+
+        const targetCharRotY = -this.mainGroup.rotation.y;
+
+        const animateJump = (time) => {
+          const elapsed = (time - startTime) / 1000;
+
+          const progress = Math.min(1.0, elapsed / 0.6);
+          const currentScale = 1.0 - (0.5 * progress);
+          const currentBarrelY = targetBarrelY * progress;
+
+          this.barrelSubGroup.scale.set(currentScale, currentScale, currentScale);
+          this.barrelSubGroup.position.y = currentBarrelY;
+
+          if (elapsed < 0.6) {
+            const p = elapsed / 0.6;
+            this.charPlane.position.y = startY + peakHeight * Math.sin(p * Math.PI / 2);
+            this.charPlane.rotation.z = Math.sin(p * Math.PI * 4) * 0.35;
+            this.charPlane.rotation.y = (1 - p) * Math.sin(p * Math.PI * 2) * 2.0 + (p * targetCharRotY);
+          } else if (elapsed < 1.1) {
+            const p = (elapsed - 0.6) / 0.5;
+            const curPeak = startY + peakHeight;
+            this.charPlane.position.y = curPeak - (curPeak - targetLandY) * (p * p);
+            this.charPlane.rotation.z = (1 - p) * 0.2;
+            this.charPlane.rotation.y = targetCharRotY;
+          } else if (elapsed < duration) {
+            if (!hasLandedSoundPlayed) {
+              soundManager.playSlot('land');
+              hasLandedSoundPlayed = true;
+            }
+            const p = (elapsed - 1.1) / 0.4;
+            const bounce = Math.abs(Math.sin(p * Math.PI * 2)) * 0.35 * (1 - p);
+            this.charPlane.position.y = targetLandY + bounce;
+            this.charPlane.rotation.z = 0;
+            this.charPlane.rotation.y = targetCharRotY;
+            const squash = 1 + (bounce * 0.2);
+            this.charPlane.scale.set(2 - squash, squash, 1);
+          } else {
+            this.charPlane.position.set(0, targetLandY, 0);
+            this.charPlane.rotation.set(0, targetCharRotY, 0);
+            this.charPlane.scale.set(1, 1, 1);
+            this.isJumping = false;
+            document.getElementById('gameover-banner').classList.add('show');
+            return;
+          }
+
+          requestAnimationFrame(animateJump);
+        };
+        requestAnimationFrame(animateJump);
+      }
+
+      updateUI() {
+        if (!this.isGameStarted) {
+          document.getElementById('status-text').textContent = 'ゲーム開始ボタンを押してください';
+          return;
+        }
+        const remaining = this.totalSlots - this.usedSlots.size;
+        document.getElementById('status-text').textContent = `残りスリット: ${remaining} / ${this.totalSlots}`;
+      }
+
+      initEvents() {
+        let isDragging = false, startX = 0, startY = 0, lastX = 0;
+
+        const onDown = (x, y) => {
+          isDragging = true; startX = x; startY = y; lastX = x;
+        };
+
+        const onMove = (x, y) => {
+          if (!isDragging) return;
+          this.mainGroup.rotation.y += (x - lastX) * 0.008;
+          lastX = x;
+        };
+
+        const onUp = (x, y) => {
+          if (!isDragging) return;
+          isDragging = false;
+          if (Math.hypot(x - startX, y - startY) < 8) this.handleClick(x, y);
+        };
+
+        window.addEventListener('mousedown', (e) => onDown(e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', (e) => onUp(e.clientX, e.clientY));
+
+        window.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) onDown(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 1) onMove(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+          if (e.changedTouches.length === 1) onUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        });
+
+        window.addEventListener('resize', () => {
+          this.camera.aspect = window.innerWidth / window.innerHeight;
+          this.camera.updateProjectionMatrix();
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+      }
+
+      handleClick(clientX, clientY) {
+        this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const intersects = this.raycaster.intersectObjects(this.slotHitBoxes);
+        if (intersects.length > 0) this.insertSword(intersects[0].object);
+      }
+
+      animate() {
+        requestAnimationFrame(() => this.animate());
+        if (!this.isGameOver && !this.isJumping) {
+          this.charPlane.position.y = 1.6 + Math.sin(performance.now() * 0.003) * 0.04;
+        }
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    /* ==========================================================
+       7. UI制御 & 各種イベント連携
+       ========================================================== */
+    let game;
+    let audioEditor;
+
+    function renderBackgroundUI() {
+      const themeGrid = document.getElementById('bg-theme-grid');
+      themeGrid.innerHTML = '';
+      bgManager.themes.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'bg-theme-btn' + (bgManager.settings.themeId === t.id ? ' active' : '');
+        btn.style.background = t.gradient;
+        btn.textContent = t.name;
+        btn.onclick = () => {
+          bgManager.updateSettings({ themeId: t.id });
+          renderBackgroundUI();
+        };
+        themeGrid.appendChild(btn);
+      });
+
+      const patternGrid = document.getElementById('bg-pattern-grid');
+      patternGrid.innerHTML = '';
+      bgManager.patterns.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'bg-pattern-btn' + (bgManager.settings.patternId === p.id ? ' active' : '');
+        btn.textContent = p.name;
+        btn.onclick = () => {
+          bgManager.updateSettings({ patternId: p.id });
+          renderBackgroundUI();
+        };
+        patternGrid.appendChild(btn);
+      });
+
+      const bgAlbumGrid = document.getElementById('bg-album-grid');
+      bgAlbumGrid.innerHTML = '';
+
+      if (bgManager.bgImages.length === 0) {
+        bgAlbumGrid.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; padding:8px; grid-column:span 2;">保存された背景画像はありません。下のフォームから追加できます。</div>';
+      } else {
+        bgManager.bgImages.forEach(img => {
+          const card = document.createElement('div');
+          const isActive = bgManager.settings.activeBgImageId === img.id;
+          card.className = 'bg-album-card' + (isActive ? ' active' : '');
+          card.innerHTML = `
+            ${isActive ? '<span class="active-badge">適用中</span>' : ''}
+            <img class="bg-thumb" src="${img.dataUrl}">
+            <div class="album-name" title="${img.name}">${img.name}</div>
+            <div style="display:flex; gap:4px; width:100%; justify-content:center;">
+              <button class="btn btn-sm btn-select-bg" data-id="${img.id}" ${isActive ? 'disabled' : ''}>
+                ${isActive ? '選択中' : '選択'}
+              </button>
+              <button class="btn btn-sm btn-danger btn-del-bg" data-id="${img.id}">🗑️</button>
+            </div>
+          `;
+          bgAlbumGrid.appendChild(card);
+        });
+
+        document.querySelectorAll('.btn-select-bg').forEach(btn => {
+          btn.onclick = async () => {
+            await bgManager.setActiveBgImage(btn.getAttribute('data-id'));
+            renderBackgroundUI();
+            showToast('背景を適用しました！', '🖼️');
+          };
+        });
+
+        document.querySelectorAll('.btn-del-bg').forEach(btn => {
+          btn.onclick = async () => {
+            if (confirm('この背景画像をアルバムから削除しますか？')) {
+              await bgManager.deleteBgImage(btn.getAttribute('data-id'));
+              renderBackgroundUI();
+              showToast('背景画像を削除しました', '🗑️');
+            }
+          };
+        });
+      }
+
+      const clearBtn = document.getElementById('btn-clear-active-bg');
+      clearBtn.style.display = bgManager.settings.activeBgImageId ? 'inline-block' : 'none';
+      clearBtn.onclick = async () => {
+        await bgManager.clearActiveBgImage();
+        renderBackgroundUI();
+        showToast('背景画像を解除しました（テーマ色のみ表示）', '🎨');
+      };
+    }
+
+    function renderSoundSettings() {
+      document.querySelectorAll('.slot-toggle').forEach(toggle => {
+        const slot = toggle.getAttribute('data-slot');
+        toggle.checked = soundManager.toggles[slot] !== false;
+      });
+
+      document.querySelectorAll('.slot-vol-range').forEach(range => {
+        const slot = range.getAttribute('data-slot');
+        const val = soundManager.volumes[slot] !== undefined ? soundManager.volumes[slot] : 0.7;
+        range.value = val;
+        const display = document.querySelector(`.val-slot-vol[data-slot="${slot}"]`);
+        if (display) display.textContent = Math.round(val * 100) + '%';
+      });
+
+      document.querySelectorAll('.slot-select').forEach(select => {
+        const slot = select.getAttribute('data-slot');
+        select.innerHTML = slot === 'bgm' 
+          ? '<option value="default">🎵 デフォルトBGM（内蔵シンセ）</option>'
+          : '<option value="default">✨ デフォルト効果音</option>';
+
+        soundManager.sounds.forEach(snd => {
+          const opt = document.createElement('option');
+          opt.value = snd.id;
+          opt.textContent = `🎶 ${snd.name} (${snd.duration}s)`;
+          select.appendChild(opt);
+        });
+
+        select.value = soundManager.slots[slot] || 'default';
+      });
+
+      document.querySelectorAll('.btn-slot-preview').forEach(btn => {
+        btn.onclick = (e) => {
+          const slot = btn.getAttribute('data-slot');
+          soundManager.togglePreviewSlot(slot, btn);
+        };
+      });
+
+      const listContainer = document.getElementById('sound-library-list');
+      listContainer.innerHTML = '';
+
+      if (soundManager.sounds.length === 0) {
+        listContainer.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; padding:8px;">保存されたカスタム音声/BGMはありません。</div>';
+        return;
+      }
+
+      soundManager.sounds.forEach(snd => {
+        const row = document.createElement('div');
+        row.className = 'sound-item-row';
+        row.innerHTML = `
+          <div>
+            <div class="sound-item-name">🎶 ${snd.name}</div>
+            <div class="sound-item-meta">長さ: ${snd.duration}s | ループ: ${snd.loopStart}s 〜 ${snd.loopEnd}s</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-sm btn-info btn-lib-preview" data-id="${snd.id}">▶ 試聴</button>
+            <a class="btn btn-sm btn-purple" href="${snd.dataUrl}" download="${snd.name}.wav" title="WAVダウンロード">📥</a>
+            <button class="btn btn-sm btn-danger btn-del-sound" data-id="${snd.id}">🗑️</button>
+          </div>
+        `;
+        listContainer.appendChild(row);
+      });
+
+      document.querySelectorAll('.btn-lib-preview').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.getAttribute('data-id');
+          soundManager.togglePreviewSound(id, btn);
+        };
+      });
+
+      document.querySelectorAll('.btn-del-sound').forEach(btn => {
+        btn.onclick = async () => {
+          if (confirm('この音声/BGMを削除しますか？')) {
+            soundManager.stopAllPreviews();
+            await soundManager.deleteSound(btn.getAttribute('data-id'));
+            renderSoundSettings();
+            showToast('音声を削除しました', '🗑️');
+          }
+        };
+      });
+    }
+
+    function renderAlbumUI() {
+      const albumGrid = document.getElementById('album-grid');
+      albumGrid.innerHTML = '';
+      album.characters.forEach(char => {
+        const card = document.createElement('div');
+        const isActive = char.id === album.activeId;
+        card.className = 'album-card' + (isActive ? ' active' : '');
+        card.innerHTML = `
+          ${isActive ? '<span class="active-badge">使用中</span>' : ''}
+          <div class="album-imgs">
+            <img class="album-thumb" src="${char.normalImg}" title="通常時">
+            <img class="album-thumb" src="${char.jumpImg}" title="飛び出し時">
+          </div>
+          <div class="album-name">${char.name}</div>
+          <div style="display:flex; gap:4px; width:100%; justify-content:center;">
+            <button class="btn btn-sm btn-select-char" data-id="${char.id}" ${isActive ? 'disabled' : ''}>
+              ${isActive ? '選択中' : '選択'}
+            </button>
+            ${!char.isDefault ? `<button class="btn btn-sm btn-danger btn-del-char" data-id="${char.id}">🗑️</button>` : ''}
+          </div>
+        `;
+        albumGrid.appendChild(card);
+      });
+
+      const activeChar = album.getActiveCharacter();
+      const scaleInput = document.getElementById('range-char-scale');
+      const offsetInput = document.getElementById('range-char-offset');
+      const scaleVal = activeChar.scale || 1.0;
+      const offsetVal = activeChar.normalOffsetY !== undefined ? activeChar.normalOffsetY : 0.5;
+
+      scaleInput.value = scaleVal;
+      offsetInput.value = offsetVal;
+      document.getElementById('val-char-scale').textContent = Math.round(scaleVal * 100) + '%';
+      document.getElementById('val-char-offset').textContent = Math.round(offsetVal * 100) + '%';
+
+      document.querySelectorAll('.btn-select-char').forEach(btn => {
+        btn.onclick = async () => {
+          await album.setActiveCharacter(btn.getAttribute('data-id'));
+          game.applyActiveCharacter();
+          renderAlbumUI();
+        };
+      });
+
+      document.querySelectorAll('.btn-del-char').forEach(btn => {
+        btn.onclick = async () => {
+          if (confirm('このキャラクターを削除しますか？')) {
+            await album.deleteCharacter(btn.getAttribute('data-id'));
+            game.applyActiveCharacter();
+            renderAlbumUI();
+            showToast('キャラクターを削除しました', '🗑️');
+          }
+        };
+      });
+    }
+
+    async function exportBackupFile() {
+      const backupData = {
+        version: 5,
+        exportedAt: new Date().toISOString(),
+        characters: await appDB.getAll('characters'),
+        sounds: await appDB.getAll('sounds'),
+        bgImages: await appDB.getAll('bgImages'),
+        settings: await appDB.getAll('settings')
+      };
+
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `barrel_game_backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('端末にバックアップを保存しました！', '💾');
+    }
+
+    async function importBackupFile(file) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (data.characters) for (const char of data.characters) await appDB.setItem('characters', char);
+        if (data.sounds) for (const snd of data.sounds) await appDB.setItem('sounds', snd);
+        if (data.bgImages) for (const bg of data.bgImages) await appDB.setItem('bgImages', bg);
+        if (data.settings) for (const set of data.settings) await appDB.setItem('settings', set);
+
+        await album.init();
+        await soundManager.init();
+        await bgManager.init();
+        game.totalSlots = await appDB.getSetting('totalSlots', 16);
+        document.getElementById('select-slots').value = game.totalSlots;
+
+        game.buildScene();
+        game.resetGame(false);
+        renderSoundSettings();
+        renderAlbumUI();
+        renderBackgroundUI();
+
+        showToast('バックアップから復元しました！', '🎉');
+      } catch (err) {
+        alert('ファイルの読み込みに失敗しました: ' + err.message);
+      }
+    }
+
+    /* =================== アプリ起動初期化 =================== */
+    window.addEventListener('DOMContentLoaded', async () => {
+      await album.init();
+      await soundManager.init();
+      await bgManager.init();
+
+      game = new PirateGame();
+      await game.init();
+      audioEditor = new AudioEditor(soundManager);
+
+      // ゲーム開始ボタン
+      document.getElementById('btn-start-game').addEventListener('click', () => {
+        game.startGame();
+      });
+
+      // タブ切り替え
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          soundManager.stopAllPreviews();
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          const tabId = btn.getAttribute('data-tab');
+          document.getElementById(tabId).classList.add('active');
+
+          if (tabId === 'tab-sound-slots') renderSoundSettings();
+          else if (tabId === 'tab-characters') renderAlbumUI();
+          else if (tabId === 'tab-background') renderBackgroundUI();
+        });
+      });
+
+      // キャラクター表示倍率スライダー（50%〜200%）
+      document.getElementById('range-char-scale').addEventListener('input', async (e) => {
+        const val = parseFloat(e.target.value);
+        document.getElementById('val-char-scale').textContent = Math.round(val * 100) + '%';
+        await album.updateActiveSettings({ scale: val });
+        game.applyActiveCharacter();
+      });
+
+      // キャラクター頭出し位置調整スライダー（20%〜80%）
+      document.getElementById('range-char-offset').addEventListener('input', async (e) => {
+        const val = parseFloat(e.target.value);
+        document.getElementById('val-char-offset').textContent = Math.round(val * 100) + '%';
+        await album.updateActiveSettings({ normalOffsetY: val });
+        game.applyActiveCharacter();
+      });
+
+      // 個別ON/OFFトグル
+      document.querySelectorAll('.slot-toggle').forEach(toggle => {
+        toggle.addEventListener('change', async (e) => {
+          const slot = e.target.getAttribute('data-slot');
+          soundManager.toggles[slot] = e.target.checked;
+          await appDB.setSetting('toggles', soundManager.toggles);
+          if (slot === 'bgm') {
+            if (e.target.checked && game.isGameStarted) soundManager.playBGM();
+            else soundManager.stopBGM(false);
+          }
+        });
+      });
+
+      // 音量スライダー
+      document.querySelectorAll('.slot-vol-range').forEach(range => {
+        range.addEventListener('input', async (e) => {
+          const slot = e.target.getAttribute('data-slot');
+          const val = parseFloat(e.target.value);
+          const display = document.querySelector(`.val-slot-vol[data-slot="${slot}"]`);
+          if (display) display.textContent = Math.round(val * 100) + '%';
+          await soundManager.setVolume(slot, val);
+        });
+      });
+
+      // スロット設定変更
+      document.querySelectorAll('.slot-select').forEach(sel => {
+        sel.addEventListener('change', async (e) => {
+          const slot = e.target.getAttribute('data-slot');
+          soundManager.slots[slot] = e.target.value;
+          await appDB.setSetting('slots', soundManager.slots);
+          if (slot === 'bgm' && game.isGameStarted) soundManager.restartBGM();
+        });
+      });
+
+      // 新規キャラクター登録
+      let newNormalData = null, newJumpData = null;
+      document.getElementById('input-new-normal').addEventListener('change', async (e) => {
+        if (e.target.files[0]) newNormalData = await CharacterAlbum.compressImage(e.target.files[0]);
+      });
+      document.getElementById('input-new-jump').addEventListener('change', async (e) => {
+        if (e.target.files[0]) newJumpData = await CharacterAlbum.compressImage(e.target.files[0]);
+      });
+
+      document.getElementById('btn-save-character').addEventListener('click', async () => {
+        if (!newNormalData) {
+          alert('通常時画像を選択してください。');
+          return;
+        }
+        const nameInput = document.getElementById('new-char-name');
+        const name = nameInput.value.trim() || '新規キャラ';
+        await album.addCharacter(name, newNormalData, newJumpData || newNormalData);
+
+        // フォームクリア
+        nameInput.value = '';
+        document.getElementById('input-new-normal').value = '';
+        document.getElementById('input-new-jump').value = '';
+        newNormalData = null;
+        newJumpData = null;
+
+        game.applyActiveCharacter();
+        renderAlbumUI();
+        showToast(`「${name}」を登録しました！`, '✨');
+      });
+
+      // 新規背景画像の登録
+      document.getElementById('btn-save-bg-image').addEventListener('click', async () => {
+        const fileInput = document.getElementById('input-new-bg-file');
+        const nameInput = document.getElementById('new-bg-name');
+        const file = fileInput.files[0];
+
+        if (!file) {
+          alert('背景画像ファイルを選択してください。');
+          return;
+        }
+
+        const name = nameInput.value.trim() || 'カスタム背景';
+        const res = await CharacterAlbum.compressImage(file, 1280);
+        await bgManager.addBgImage(name, res.dataUrl);
+
+        fileInput.value = '';
+        nameInput.value = '';
+        renderBackgroundUI();
+        showToast(`背景「${name}」をアルバムに登録して適用しました！`, '🖼️');
+      });
+
+      // バックアップ操作
+      document.getElementById('btn-export-backup').addEventListener('click', exportBackupFile);
+      document.getElementById('input-import-backup').addEventListener('change', (e) => {
+        if (e.target.files[0]) importBackupFile(e.target.files[0]);
+      });
+
+      // モーダル開閉
+      document.getElementById('btn-settings').addEventListener('click', () => {
+        renderSoundSettings();
+        renderAlbumUI();
+        renderBackgroundUI();
+        document.getElementById('modal-settings').classList.add('open');
+      });
+
+      document.getElementById('btn-close-modal').addEventListener('click', async () => {
+        soundManager.stopAllPreviews();
+        const newSlots = parseInt(document.getElementById('select-slots').value, 10);
+        if (newSlots !== game.totalSlots) {
+          game.totalSlots = newSlots;
+          await appDB.setSetting('totalSlots', newSlots);
+          game.buildScene();
+        }
+        game.applyActiveCharacter();
+        document.getElementById('modal-settings').classList.remove('open');
+      });
+
+      // 全体音ON/OFFボタン
+      document.getElementById('btn-sound-master').addEventListener('click', () => {
+        soundManager.masterEnabled = !soundManager.masterEnabled;
+        document.getElementById('btn-sound-master').textContent = soundManager.masterEnabled ? '🔊 全体音' : '🔇 ミュート';
+        if (soundManager.masterEnabled && game.isGameStarted) soundManager.playBGM();
+        else soundManager.stopBGM(false);
+      });
+
+      document.getElementById('btn-reset').addEventListener('click', () => game.resetGame(game.isGameStarted));
+      document.getElementById('btn-restart-banner').addEventListener('click', () => game.resetGame(true));
+    });
+  </script>
+</body>
+</html>
