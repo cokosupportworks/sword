@@ -3,11 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>ドキドキ樽ゲーム</title>
-
-<link rel="apple-touch-icon" href="./apple-touch-icon.png">
-  <link rel="icon" href="apple-touch-icon.png">
-  
+  <title>ドキドキ樽ゲーム 3D - 完全版</title>
   <!-- Three.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
@@ -1148,76 +1144,182 @@
 
   <script>
     /* ==========================================================
-       0. IndexedDB 永続化ストレージ
+       Canvas roundRect ポリフィル（古いiOS / ブラウザ対応）
+       ========================================================== */
+    if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, radii) {
+        if (!radii) radii = 0;
+        const r = typeof radii === 'number' ? radii : (Array.isArray(radii) ? radii[0] : 0);
+        this.moveTo(x + r, y);
+        this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r);
+        this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y + w, x, y, r);
+        this.closePath();
+        return this;
+      };
+    }
+
+    /* ==========================================================
+       0. IndexedDB 永続化ストレージ（完全フェイルセーフ対応）
        ========================================================== */
     class AppDatabase {
       constructor() {
         this.dbName = 'BarrelGameDB_v5';
         this.version = 1;
         this.db = null;
+        this.useMemory = false;
+        this.memoryStore = { characters: [], sounds: [], bgImages: [], settings: [] };
       }
 
       async open() {
+        if (this.useMemory) return null;
         if (this.db) return this.db;
-        return new Promise((resolve, reject) => {
-          const req = indexedDB.open(this.dbName, this.version);
-          req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains('characters')) db.createObjectStore('characters', { keyPath: 'id' });
-            if (!db.objectStoreNames.contains('sounds')) db.createObjectStore('sounds', { keyPath: 'id' });
-            if (!db.objectStoreNames.contains('bgImages')) db.createObjectStore('bgImages', { keyPath: 'id' });
-            if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
-          };
-          req.onsuccess = (e) => {
-            this.db = e.target.result;
-            resolve(this.db);
-          };
-          req.onerror = (e) => reject(e);
+        if (typeof indexedDB === 'undefined') {
+          this.useMemory = true;
+          return null;
+        }
+
+        return new Promise((resolve) => {
+          let hasSettled = false;
+          const timer = setTimeout(() => {
+            if (!hasSettled) {
+              hasSettled = true;
+              this.useMemory = true;
+              resolve(null);
+            }
+          }, 2000);
+
+          try {
+            const req = indexedDB.open(this.dbName, this.version);
+            req.onupgradeneeded = (e) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains('characters')) db.createObjectStore('characters', { keyPath: 'id' });
+              if (!db.objectStoreNames.contains('sounds')) db.createObjectStore('sounds', { keyPath: 'id' });
+              if (!db.objectStoreNames.contains('bgImages')) db.createObjectStore('bgImages', { keyPath: 'id' });
+              if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
+            };
+            req.onsuccess = (e) => {
+              if (hasSettled) return;
+              hasSettled = true;
+              clearTimeout(timer);
+              this.db = e.target.result;
+              resolve(this.db);
+            };
+            req.onerror = () => {
+              if (hasSettled) return;
+              hasSettled = true;
+              clearTimeout(timer);
+              this.useMemory = true;
+              resolve(null);
+            };
+            req.onblocked = () => {
+              if (hasSettled) return;
+              hasSettled = true;
+              clearTimeout(timer);
+              this.useMemory = true;
+              resolve(null);
+            };
+          } catch (err) {
+            clearTimeout(timer);
+            this.useMemory = true;
+            resolve(null);
+          }
         });
       }
 
       async getAll(storeName) {
-        const db = await this.open();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(storeName, 'readonly');
-          const store = tx.objectStore(storeName);
-          const req = store.getAll();
-          req.onsuccess = () => resolve(req.result || []);
-          req.onerror = () => reject(req.error);
-        });
+        try {
+          const db = await this.open();
+          if (!db) return this.memoryStore[storeName] || [];
+          return new Promise((resolve) => {
+            try {
+              const tx = db.transaction(storeName, 'readonly');
+              const store = tx.objectStore(storeName);
+              const req = store.getAll();
+              req.onsuccess = () => resolve(req.result || []);
+              req.onerror = () => resolve(this.memoryStore[storeName] || []);
+              tx.onerror = () => resolve(this.memoryStore[storeName] || []);
+            } catch (err) {
+              resolve(this.memoryStore[storeName] || []);
+            }
+          });
+        } catch (e) {
+          return this.memoryStore[storeName] || [];
+        }
       }
 
       async setItem(storeName, item) {
-        const db = await this.open();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(storeName, 'readwrite');
-          const store = tx.objectStore(storeName);
-          const req = store.put(item);
-          req.onsuccess = () => resolve();
-          req.onerror = () => reject(req.error);
-        });
+        const mem = this.memoryStore[storeName] || (this.memoryStore[storeName] = []);
+        const idx = mem.findIndex(x => (item.id && x.id === item.id) || (item.key && x.key === item.key));
+        if (idx >= 0) mem[idx] = item; else mem.push(item);
+
+        try {
+          const db = await this.open();
+          if (!db) return;
+          return new Promise((resolve) => {
+            try {
+              const tx = db.transaction(storeName, 'readwrite');
+              const store = tx.objectStore(storeName);
+              const req = store.put(item);
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+              tx.onerror = () => resolve();
+            } catch (err) {
+              resolve();
+            }
+          });
+        } catch (e) {
+          // ignore
+        }
       }
 
       async deleteItem(storeName, key) {
-        const db = await this.open();
-        return new Promise((resolve, reject) => {
-          const tx = db.transaction(storeName, 'readwrite');
-          const store = tx.objectStore(storeName);
-          const req = store.delete(key);
-          req.onsuccess = () => resolve();
-          req.onerror = () => reject(req.error);
-        });
+        if (this.memoryStore[storeName]) {
+          this.memoryStore[storeName] = this.memoryStore[storeName].filter(x => x.id !== key && x.key !== key);
+        }
+        try {
+          const db = await this.open();
+          if (!db) return;
+          return new Promise((resolve) => {
+            try {
+              const tx = db.transaction(storeName, 'readwrite');
+              const store = tx.objectStore(storeName);
+              const req = store.delete(key);
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+              tx.onerror = () => resolve();
+            } catch (err) {
+              resolve();
+            }
+          });
+        } catch (e) {
+          // ignore
+        }
       }
 
       async getSetting(key, defaultValue) {
-        const db = await this.open();
-        return new Promise((resolve) => {
-          const tx = db.transaction('settings', 'readonly');
-          const store = tx.objectStore('settings');
-          const req = store.get(key);
-          req.onsuccess = () => resolve(req.result ? req.result.value : defaultValue);
-          req.onerror = () => resolve(defaultValue);
-        });
+        try {
+          const db = await this.open();
+          if (!db) {
+            const item = (this.memoryStore.settings || []).find(s => s.key === key);
+            return item ? item.value : defaultValue;
+          }
+          return new Promise((resolve) => {
+            try {
+              const tx = db.transaction('settings', 'readonly');
+              const store = tx.objectStore('settings');
+              const req = store.get(key);
+              req.onsuccess = () => resolve(req.result ? req.result.value : defaultValue);
+              req.onerror = () => resolve(defaultValue);
+              tx.onerror = () => resolve(defaultValue);
+            } catch (err) {
+              resolve(defaultValue);
+            }
+          });
+        } catch (e) {
+          return defaultValue;
+        }
       }
 
       async setSetting(key, value) {
@@ -1229,6 +1331,7 @@
 
     function showToast(msg, icon = '✅') {
       const toast = document.getElementById('toast-notify');
+      if (!toast) return;
       document.getElementById('toast-icon').textContent = icon;
       document.getElementById('toast-msg').textContent = msg;
       toast.classList.add('show');
@@ -1265,8 +1368,12 @@
       }
 
       async init() {
-        this.bgImages = await appDB.getAll('bgImages');
-        this.settings = await appDB.getSetting('bgSettings', this.settings);
+        try {
+          this.bgImages = await appDB.getAll('bgImages');
+          this.settings = await appDB.getSetting('bgSettings', this.settings);
+        } catch (e) {
+          console.warn(e);
+        }
         this.apply();
       }
 
@@ -1313,6 +1420,7 @@
 
       apply() {
         const bgLayer = document.getElementById('bg-layer');
+        if (!bgLayer) return;
         const theme = this.themes.find(t => t.id === this.settings.themeId) || this.themes[0];
         const pattern = this.patterns.find(p => p.id === this.settings.patternId) || this.patterns[0];
 
@@ -1346,116 +1454,128 @@
     const bgManager = new BackgroundManager();
 
     /* ==========================================================
-       2. デフォルトキャラクター（高解像度PNG生成）
+       2. デフォルトキャラクター（安全な高解像度PNG生成）
        ========================================================== */
     function generateDefaultCharacterPNG(isJump = false) {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
       canvas.height = 512;
       const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
       ctx.clearRect(0, 0, 512, 512);
 
-      if (!isJump) {
-        ctx.fillStyle = '#2c3e50';
-        ctx.beginPath();
-        ctx.roundRect(120, 260, 272, 250, 20);
-        ctx.fill();
+      try {
+        if (!isJump) {
+          ctx.fillStyle = '#2c3e50';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(120, 260, 272, 250, 20);
+          else ctx.rect(120, 260, 272, 250);
+          ctx.fill();
 
-        ctx.fillStyle = '#e74c3c';
-        ctx.fillRect(220, 260, 72, 250);
+          ctx.fillStyle = '#e74c3c';
+          ctx.fillRect(220, 260, 72, 250);
 
-        ctx.fillStyle = '#f5b041';
-        ctx.beginPath();
-        ctx.arc(256, 175, 130, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#f5b041';
+          ctx.beginPath();
+          ctx.arc(256, 175, 130, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#2c3e50';
-        ctx.beginPath();
-        ctx.arc(195, 160, 20, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#2c3e50';
+          ctx.beginPath();
+          ctx.arc(195, 160, 20, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#111111';
-        ctx.beginPath();
-        ctx.arc(315, 160, 26, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#111111';
+          ctx.beginPath();
+          ctx.arc(315, 160, 26, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.strokeStyle = '#111111';
-        ctx.lineWidth = 12;
-        ctx.beginPath();
-        ctx.moveTo(140, 90); ctx.lineTo(390, 210);
-        ctx.stroke();
+          ctx.strokeStyle = '#111111';
+          ctx.lineWidth = 12;
+          ctx.beginPath();
+          ctx.moveTo(140, 90); ctx.lineTo(390, 210);
+          ctx.stroke();
 
-        ctx.strokeStyle = '#c0392b';
-        ctx.lineWidth = 14;
-        ctx.beginPath();
-        ctx.arc(256, 210, 45, 0.2, Math.PI - 0.2);
-        ctx.stroke();
+          ctx.strokeStyle = '#c0392b';
+          ctx.lineWidth = 14;
+          ctx.beginPath();
+          ctx.arc(256, 210, 45, 0.2, Math.PI - 0.2);
+          ctx.stroke();
 
-        ctx.fillStyle = '#1a1a1a';
-        ctx.beginPath();
-        ctx.moveTo(40, 110);
-        ctx.quadraticCurveTo(256, -50, 472, 110);
-        ctx.quadraticCurveTo(256, 50, 40, 110);
-        ctx.fill();
+          ctx.fillStyle = '#1a1a1a';
+          ctx.beginPath();
+          ctx.moveTo(40, 110);
+          ctx.quadraticCurveTo(256, -50, 472, 110);
+          ctx.quadraticCurveTo(256, 50, 40, 110);
+          ctx.fill();
 
-        ctx.fillStyle = '#f1c40f';
-        ctx.beginPath();
-        ctx.arc(256, 60, 20, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = '#2c3e50';
-        ctx.beginPath();
-        ctx.moveTo(120, 280); ctx.lineTo(20, 180); ctx.lineTo(70, 130); ctx.lineTo(160, 230);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(392, 280); ctx.lineTo(492, 180); ctx.lineTo(442, 130); ctx.lineTo(352, 230);
-        ctx.fill();
+          ctx.fillStyle = '#f1c40f';
+          ctx.beginPath();
+          ctx.arc(256, 60, 20, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = '#2c3e50';
+          ctx.beginPath();
+          ctx.moveTo(120, 280); ctx.lineTo(20, 180); ctx.lineTo(70, 130); ctx.lineTo(160, 230);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(392, 280); ctx.lineTo(492, 180); ctx.lineTo(442, 130); ctx.lineTo(352, 230);
+          ctx.fill();
 
-        ctx.beginPath();
-        ctx.roundRect(140, 360, 80, 140, 15);
-        ctx.roundRect(292, 360, 80, 140, 15);
-        ctx.fill();
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(140, 360, 80, 140, 15);
+            ctx.roundRect(292, 360, 80, 140, 15);
+          } else {
+            ctx.rect(140, 360, 80, 140);
+            ctx.rect(292, 360, 80, 140);
+          }
+          ctx.fill();
 
-        ctx.fillStyle = '#e74c3c';
-        ctx.beginPath();
-        ctx.roundRect(120, 240, 272, 150, 20);
-        ctx.fill();
+          ctx.fillStyle = '#e74c3c';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(120, 240, 272, 150, 20);
+          else ctx.rect(120, 240, 272, 150);
+          ctx.fill();
 
-        ctx.fillStyle = '#f5b041';
-        ctx.beginPath();
-        ctx.arc(256, 160, 130, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#f5b041';
+          ctx.beginPath();
+          ctx.arc(256, 160, 130, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(190, 140, 32, 0, Math.PI * 2);
-        ctx.arc(322, 140, 32, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(190, 140, 32, 0, Math.PI * 2);
+          ctx.arc(322, 140, 32, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#000000';
-        ctx.beginPath();
-        ctx.arc(190, 140, 16, 0, Math.PI * 2);
-        ctx.arc(322, 140, 16, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#000000';
+          ctx.beginPath();
+          ctx.arc(190, 140, 16, 0, Math.PI * 2);
+          ctx.arc(322, 140, 16, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#2c3e50';
-        ctx.beginPath();
-        ctx.ellipse(256, 230, 35, 45, 0, 0, Math.PI * 2);
-        ctx.fill();
+          ctx.fillStyle = '#2c3e50';
+          ctx.beginPath();
+          ctx.ellipse(256, 230, 35, 45, 0, 0, Math.PI * 2);
+          ctx.fill();
 
-        ctx.fillStyle = '#1a1a1a';
-        ctx.beginPath();
-        ctx.moveTo(40, 100);
-        ctx.quadraticCurveTo(256, -60, 472, 100);
-        ctx.quadraticCurveTo(256, 40, 40, 100);
-        ctx.fill();
+          ctx.fillStyle = '#1a1a1a';
+          ctx.beginPath();
+          ctx.moveTo(40, 100);
+          ctx.quadraticCurveTo(256, -60, 472, 100);
+          ctx.quadraticCurveTo(256, 40, 40, 100);
+          ctx.fill();
 
-        ctx.fillStyle = '#3498db';
-        ctx.beginPath();
-        ctx.moveTo(420, 60);
-        ctx.quadraticCurveTo(450, 100, 420, 120);
-        ctx.quadraticCurveTo(390, 100, 420, 60);
-        ctx.fill();
+          ctx.fillStyle = '#3498db';
+          ctx.beginPath();
+          ctx.moveTo(420, 60);
+          ctx.quadraticCurveTo(450, 100, 420, 120);
+          ctx.quadraticCurveTo(390, 100, 420, 60);
+          ctx.fill();
+        }
+      } catch (err) {
+        console.warn('Character generator error, using simple fallback:', err);
       }
 
       return canvas.toDataURL('image/png');
@@ -1465,7 +1585,7 @@
     const DEFAULT_JUMP_PNG = generateDefaultCharacterPNG(true);
 
     /* ==========================================================
-       3. サウンド＆BGM管理 (BGM排他制御＆個別音量)
+       3. サウンド＆BGM管理
        ========================================================== */
     class SoundManager {
       constructor() {
@@ -1493,21 +1613,26 @@
       }
 
       async init() {
-        this.sounds = await appDB.getAll('sounds');
-        this.slots = await appDB.getSetting('slots', { bgm: 'default', insert: 'default', jump: 'default', land: 'default' });
-        this.toggles = await appDB.getSetting('toggles', { bgm: true, insert: true, jump: true, land: true });
-        this.volumes = await appDB.getSetting('volumes', { bgm: 0.5, insert: 0.7, jump: 0.8, land: 0.8 });
+        try {
+          this.sounds = await appDB.getAll('sounds');
+          this.slots = await appDB.getSetting('slots', { bgm: 'default', insert: 'default', jump: 'default', land: 'default' });
+          this.toggles = await appDB.getSetting('toggles', { bgm: true, insert: true, jump: true, land: true });
+          this.volumes = await appDB.getSetting('volumes', { bgm: 0.5, insert: 0.7, jump: 0.8, land: 0.8 });
+        } catch (e) {
+          console.warn(e);
+        }
       }
 
       initContext() {
         if (!this.ctx) {
           const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
           this.ctx = new AudioContext();
           this.bgmGainNode = this.ctx.createGain();
           this.bgmGainNode.connect(this.ctx.destination);
           this.updateBGMGain();
         }
-        if (this.ctx.state === 'suspended') this.ctx.resume();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
       }
 
       updateBGMGain() {
@@ -1557,6 +1682,7 @@
       async getAudioBuffer(dataUrl, id) {
         if (id && this.bufferCache.has(id)) return this.bufferCache.get(id);
         this.initContext();
+        if (!this.ctx) return null;
         const res = await fetch(dataUrl);
         const arrayBuf = await res.arrayBuffer();
         const audioBuf = await this.ctx.decodeAudioData(arrayBuf);
@@ -1572,6 +1698,7 @@
         }
 
         this.initContext();
+        if (!this.ctx) return;
         this.isBgmPaused = false;
         const currentReqId = ++this.bgmPlayId;
 
@@ -1591,8 +1718,7 @@
           if (sound) {
             try {
               const buf = await this.getAudioBuffer(sound.dataUrl, sound.id);
-
-              if (currentReqId !== this.bgmPlayId) return;
+              if (!buf || currentReqId !== this.bgmPlayId) return;
 
               const src = this.ctx.createBufferSource();
               src.buffer = buf;
@@ -1684,7 +1810,7 @@
       }
 
       startSynthBGM() {
-        if (this.synthBgmInterval) return;
+        if (this.synthBgmInterval || !this.ctx) return;
         const notes = [220, 261.63, 293.66, 329.63, 392.00, 329.63, 293.66, 261.63];
         const bassNotes = [110, 110, 130.81, 146.83];
         let step = 0;
@@ -1738,6 +1864,7 @@
 
       async togglePreviewSound(soundId, btnElement) {
         this.initContext();
+        if (!this.ctx) return;
 
         if (this.activePreview && this.activePreview.id === soundId) {
           this.stopAllPreviews();
@@ -1751,6 +1878,7 @@
 
         try {
           const buf = await this.getAudioBuffer(sound.dataUrl, sound.id);
+          if (!buf) return;
           const src = this.ctx.createBufferSource();
           src.buffer = buf;
 
@@ -1781,6 +1909,7 @@
 
       async togglePreviewSlot(slotName, btnElement) {
         this.initContext();
+        if (!this.ctx) return;
 
         if (this.activePreview && this.activePreview.slot === slotName) {
           this.stopAllPreviews();
@@ -1815,7 +1944,9 @@
         const sound = this.sounds.find(s => s.id === id);
         if (!sound) return;
         this.getAudioBuffer(sound.dataUrl, sound.id).then(buf => {
+          if (!buf) return;
           this.initContext();
+          if (!this.ctx) return;
           const src = this.ctx.createBufferSource();
           src.buffer = buf;
 
@@ -1830,6 +1961,7 @@
 
       playDefaultInsert() {
         this.initContext();
+        if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         const vol = this.volumes.insert !== undefined ? this.volumes.insert : 0.7;
@@ -1847,6 +1979,7 @@
 
       playDefaultJump() {
         this.initContext();
+        if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         const vol = this.volumes.jump !== undefined ? this.volumes.jump : 0.8;
@@ -1864,6 +1997,7 @@
 
       playDefaultLand() {
         this.initContext();
+        if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         const vol = this.volumes.land !== undefined ? this.volumes.land : 0.8;
@@ -1906,7 +2040,7 @@
         this.isRecording = false;
 
         this.canvas = document.getElementById('wave-canvas');
-        this.ctx2d = this.canvas.getContext('2d');
+        if (this.canvas) this.ctx2d = this.canvas.getContext('2d');
 
         this.rangeStart = document.getElementById('range-trim-start');
         this.rangeEnd = document.getElementById('range-trim-end');
@@ -1925,6 +2059,7 @@
       }
 
       initEvents() {
+        if (!this.rangeStart) return;
         const updateUI = () => {
           if (!this.audioBuffer) return;
           const dur = this.audioBuffer.duration;
@@ -1977,21 +2112,37 @@
           });
         });
 
-        document.getElementById('btn-record-toggle').addEventListener('click', () => this.toggleRecording());
-        document.getElementById('input-audio-file').addEventListener('change', (e) => {
-          if (e.target.files[0]) this.loadFile(e.target.files[0]);
-        });
+        const recBtn = document.getElementById('btn-record-toggle');
+        if (recBtn) recBtn.addEventListener('click', () => this.toggleRecording());
 
-        document.getElementById('btn-preview-editor').addEventListener('click', () => this.previewTrimmed());
-        document.getElementById('btn-preview-loop-test').addEventListener('click', () => this.previewLoopTest());
-        document.getElementById('btn-stop-editor').addEventListener('click', () => this.stopPreview());
-        document.getElementById('btn-save-edited-sound').addEventListener('click', () => this.saveEditedSound());
+        const audioFile = document.getElementById('input-audio-file');
+        if (audioFile) {
+          audioFile.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) this.loadFile(e.target.files[0]);
+          });
+        }
+
+        const previewBtn = document.getElementById('btn-preview-editor');
+        if (previewBtn) previewBtn.addEventListener('click', () => this.previewTrimmed());
+
+        const loopTestBtn = document.getElementById('btn-preview-loop-test');
+        if (loopTestBtn) loopTestBtn.addEventListener('click', () => this.previewLoopTest());
+
+        const stopBtn = document.getElementById('btn-stop-editor');
+        if (stopBtn) stopBtn.addEventListener('click', () => this.stopPreview());
+
+        const saveBtn = document.getElementById('btn-save-edited-sound');
+        if (saveBtn) saveBtn.addEventListener('click', () => this.saveEditedSound());
       }
 
       async toggleRecording() {
         const btn = document.getElementById('btn-record-toggle');
         if (!this.isRecording) {
           try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+              alert('この端末環境では録音機能がサポートされていません。');
+              return;
+            }
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             this.mediaRecorder = new MediaRecorder(stream);
             this.audioChunks = [];
@@ -2000,6 +2151,7 @@
               const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
               const arrayBuf = await audioBlob.arrayBuffer();
               this.soundMgr.initContext();
+              if (!this.soundMgr.ctx) return;
               this.audioBuffer = await this.soundMgr.ctx.decodeAudioData(arrayBuf);
               this.onBufferLoaded();
             };
@@ -2011,7 +2163,7 @@
             alert('マイクへのアクセスが許可されていません: ' + err.message);
           }
         } else {
-          this.mediaRecorder.stop();
+          if (this.mediaRecorder) this.mediaRecorder.stop();
           this.isRecording = false;
           btn.textContent = '🔴 マイク録音';
           btn.classList.replace('btn-success', 'btn-danger');
@@ -2021,6 +2173,7 @@
       async loadFile(file) {
         const arrayBuf = await file.arrayBuffer();
         this.soundMgr.initContext();
+        if (!this.soundMgr.ctx) return;
         this.audioBuffer = await this.soundMgr.ctx.decodeAudioData(arrayBuf);
         this.onBufferLoaded();
       }
@@ -2043,7 +2196,7 @@
       }
 
       drawWaveform() {
-        if (!this.audioBuffer) return;
+        if (!this.audioBuffer || !this.canvas || !this.ctx2d) return;
         const w = this.canvas.width = this.canvas.clientWidth * window.devicePixelRatio;
         const h = this.canvas.height = this.canvas.clientHeight * window.devicePixelRatio;
         const ctx = this.ctx2d;
@@ -2114,6 +2267,7 @@
         if (!this.audioBuffer) return;
         this.stopPreview();
         this.soundMgr.initContext();
+        if (!this.soundMgr.ctx) return;
 
         const dur = this.audioBuffer.duration;
         const s = parseFloat(this.rangeStart.value) * dur;
@@ -2141,6 +2295,7 @@
         if (!this.audioBuffer) return;
         this.stopPreview();
         this.soundMgr.initContext();
+        if (!this.soundMgr.ctx) return;
 
         const dur = this.audioBuffer.duration;
         const ls = parseFloat(this.rangeLoopStart.value) * dur;
@@ -2227,7 +2382,7 @@
         if (targetSlot !== 'none') {
           this.soundMgr.slots[targetSlot] = newSound.id;
           await appDB.setSetting('slots', this.soundMgr.slots);
-          if (targetSlot === 'bgm' && game.isGameStarted) this.soundMgr.restartBGM();
+          if (targetSlot === 'bgm' && game && game.isGameStarted) this.soundMgr.restartBGM();
         }
 
         nameInput.value = '';
@@ -2244,42 +2399,48 @@
     }
 
     /* ==========================================================
-       5. キャラクターアルバム管理 (通常時＆飛び出し時サイズ対応)
+       5. キャラクターアルバム管理 (安全なフォールバック対応)
        ========================================================== */
     class CharacterAlbum {
       constructor() {
         this.characters = [];
         this.activeId = 'default';
+        this.fallbackChar = {
+          id: 'default',
+          name: 'デフォルト海賊',
+          normalImg: DEFAULT_NORMAL_PNG,
+          jumpImg: DEFAULT_JUMP_PNG,
+          normalAspect: 1.0,
+          jumpAspect: 1.0,
+          scale: 1.0,
+          jumpScale: 1.5,
+          normalOffsetY: 0.5,
+          isDefault: true
+        };
       }
 
       async init() {
-        this.characters = await appDB.getAll('characters');
-        if (this.characters.length === 0) {
-          const def = {
-            id: 'default',
-            name: 'デフォルト海賊',
-            normalImg: DEFAULT_NORMAL_PNG,
-            jumpImg: DEFAULT_JUMP_PNG,
-            normalAspect: 1.0,
-            jumpAspect: 1.0,
-            scale: 1.0,
-            jumpScale: 1.5,
-            normalOffsetY: 0.5,
-            isDefault: true
-          };
-          this.characters.push(def);
-          await appDB.setItem('characters', def);
+        try {
+          this.characters = await appDB.getAll('characters');
+          if (this.characters.length === 0) {
+            this.characters.push(this.fallbackChar);
+            await appDB.setItem('characters', this.fallbackChar);
+          }
+          this.activeId = await appDB.getSetting('activeCharId', 'default');
+          if (!this.getCharacter(this.activeId)) this.activeId = 'default';
+        } catch (e) {
+          console.warn('Character album init error:', e);
+          if (this.characters.length === 0) this.characters = [this.fallbackChar];
+          this.activeId = 'default';
         }
-        this.activeId = await appDB.getSetting('activeCharId', 'default');
-        if (!this.getCharacter(this.activeId)) this.activeId = 'default';
       }
 
       getCharacter(id) {
-        return this.characters.find(c => c.id === id) || this.characters[0];
+        return this.characters.find(c => c.id === id) || this.characters[0] || this.fallbackChar;
       }
 
       getActiveCharacter() {
-        return this.getCharacter(this.activeId);
+        return this.getCharacter(this.activeId) || this.fallbackChar;
       }
 
       async setActiveCharacter(id) {
@@ -2323,22 +2484,25 @@
       }
 
       static compressImage(file, maxSize = 600) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
-              const aspect = img.width / img.height;
+              const aspect = (img.width || 1) / (img.height || 1);
               const canvas = document.createElement('canvas');
               let w = img.width, h = img.height;
               if (w > h && w > maxSize) { h = Math.round((h * maxSize) / w); w = maxSize; }
               else if (h > maxSize) { w = Math.round((w * maxSize) / h); h = maxSize; }
               canvas.width = w; canvas.height = h;
-              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              const ctx = canvas.getContext('2d');
+              if (ctx) ctx.drawImage(img, 0, 0, w, h);
               resolve({ dataUrl: canvas.toDataURL('image/png', 0.9), aspect: aspect });
             };
+            img.onerror = () => resolve({ dataUrl: DEFAULT_NORMAL_PNG, aspect: 1.0 });
             img.src = e.target.result;
           };
+          reader.onerror = () => resolve({ dataUrl: DEFAULT_NORMAL_PNG, aspect: 1.0 });
           reader.readAsDataURL(file);
         });
       }
@@ -2358,12 +2522,15 @@
         this.isGameOver = false;
         this.isJumping = false;
         this.isGameStarted = false;
-        this.ignoreInputUntil = 0; // モーダル閉鎖直後の誤タップ防止クールダウン
+        this.ignoreInputUntil = 0;
       }
 
       async init() {
-        this.totalSlots = await appDB.getSetting('totalSlots', 16);
-        document.getElementById('select-slots').value = this.totalSlots;
+        try {
+          this.totalSlots = await appDB.getSetting('totalSlots', 16);
+          const sel = document.getElementById('select-slots');
+          if (sel) sel.value = this.totalSlots;
+        } catch(e){}
 
         this.initThree();
         this.buildScene();
@@ -2423,7 +2590,7 @@
         const offsetY = char.normalOffsetY !== undefined ? char.normalOffsetY : 0.5;
 
         const baseH = 2.0 * scale;
-        const visibleH = baseH * (1 - offsetY);
+        const visibleH = Math.max(0.1, baseH * (1 - offsetY));
         const w = (baseH * aspect);
 
         const geo = new THREE.PlaneGeometry(w, visibleH);
@@ -2444,7 +2611,6 @@
         const aspect = char.jumpAspect || char.normalAspect || 1.0;
         const jumpScale = char.jumpScale !== undefined ? char.jumpScale : 1.5;
 
-        // 通常時の基準高さ(2.0)に対してjumpScale倍（初期値1.5で150%）
         const baseH = 2.0 * jumpScale;
         const w = baseH * aspect;
 
@@ -2454,7 +2620,9 @@
       }
 
       buildScene() {
-        this.barrelSubGroup.clear();
+        while (this.barrelSubGroup.children.length > 0) {
+          this.barrelSubGroup.remove(this.barrelSubGroup.children[0]);
+        }
 
         const barrelGeo = new THREE.CylinderGeometry(1.6, 1.6, 3.2, 32);
         const barrelMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.6, metalness: 0.1 });
@@ -2468,4 +2636,891 @@
           new THREE.MeshStandardMaterial({ color: 0x5c2c16 })
         );
         topCap.position.y = 1.6;
-        this.barrelSubGroup.
+        this.barrelSubGroup.add(topCap);
+
+        const ringMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.3 });
+        [-1.2, -0.4, 0.4, 1.2].forEach(y => {
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.62, 0.1, 32), ringMat);
+          ring.position.y = y;
+          this.barrelSubGroup.add(ring);
+        });
+
+        if (this.charPlane) {
+          this.mainGroup.remove(this.charPlane);
+        }
+        this.loader = new THREE.TextureLoader();
+        this.charMaterial = new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide });
+        this.charPlane = new THREE.Mesh(this.createNormalGeometry(), this.charMaterial);
+        this.charPlane.position.set(0, 1.6, 0);
+        this.mainGroup.add(this.charPlane);
+
+        this.applyActiveCharacter();
+
+        this.slots = [];
+        this.slotHitBoxes = [];
+        const radius = 1.61;
+        const rows = 2;
+        const slotsPerRow = Math.max(1, Math.floor(this.totalSlots / rows));
+
+        for (let i = 0; i < this.totalSlots; i++) {
+          const row = Math.floor(i / slotsPerRow);
+          const col = i % slotsPerRow;
+          const angle = (col / slotsPerRow) * (Math.PI * 2) + (row * (Math.PI / slotsPerRow));
+          const y = row === 0 ? 0.7 : -0.7;
+
+          const slot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.4, 0.05), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+          slot.position.set(Math.sin(angle) * radius, y, Math.cos(angle) * radius);
+          slot.rotation.y = angle;
+
+          const hitBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), new THREE.MeshBasicMaterial({ visible: false }));
+          hitBox.position.copy(slot.position);
+          hitBox.rotation.copy(slot.rotation);
+          hitBox.userData = { slotIndex: i, angle: angle, y: y };
+
+          this.barrelSubGroup.add(slot);
+          this.barrelSubGroup.add(hitBox);
+          this.slots.push({ mesh: slot, insertedSword: null });
+          this.slotHitBoxes.push(hitBox);
+        }
+      }
+
+      applyActiveCharacter() {
+        const char = album.getActiveCharacter();
+        if (this.charPlane.geometry) this.charPlane.geometry.dispose();
+        this.charPlane.geometry = this.createNormalGeometry();
+        this.charPlane.position.set(0, 1.6, 0);
+        this.charPlane.rotation.set(0, 0, 0);
+        this.updateTexture(char.normalImg || DEFAULT_NORMAL_PNG);
+      }
+
+      updateTexture(dataUrl) {
+        if (!dataUrl) return;
+        this.loader.load(dataUrl, (tex) => {
+          this.charMaterial.map = tex;
+          this.charMaterial.needsUpdate = true;
+        });
+      }
+
+      startGame() {
+        this.isGameStarted = true;
+        const startOverlay = document.getElementById('start-overlay');
+        if (startOverlay) startOverlay.classList.add('hidden');
+        soundManager.initContext();
+        soundManager.playBGM(0);
+        this.updateUI();
+      }
+
+      resetGame(autoPlayBGM = true) {
+        this.isGameOver = false;
+        this.isJumping = false;
+        this.usedSlots.clear();
+        this.hitSlotIndex = Math.floor(Math.random() * this.totalSlots);
+
+        this.slots.forEach(s => {
+          if (s.insertedSword) {
+            this.barrelSubGroup.remove(s.insertedSword);
+            s.insertedSword = null;
+          }
+        });
+
+        this.barrelSubGroup.scale.set(1, 1, 1);
+        this.barrelSubGroup.position.set(0, 0, 0);
+
+        this.applyActiveCharacter();
+        this.charPlane.scale.set(1, 1, 1);
+
+        const banner = document.getElementById('gameover-banner');
+        if (banner) banner.classList.remove('show');
+        this.updateUI();
+
+        if (this.isGameStarted && autoPlayBGM) {
+          soundManager.resumeBGM();
+        }
+      }
+
+      insertSword(hitBox) {
+        const modal = document.getElementById('modal-settings');
+        if (modal && modal.classList.contains('open')) return;
+        if (Date.now() < this.ignoreInputUntil) return;
+
+        if (!this.isGameStarted) {
+          this.startGame();
+          return;
+        }
+
+        const index = hitBox.userData.slotIndex;
+        if (this.usedSlots.has(index) || this.isGameOver || this.isJumping) return;
+
+        this.usedSlots.add(index);
+        soundManager.playSlot('insert');
+
+        const swordGroup = new THREE.Group();
+        const blade = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 0.28, 1.2),
+          new THREE.MeshStandardMaterial({
+            color: ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6'][index % 5],
+            metalness: 0.4,
+            roughness: 0.3
+          })
+        );
+        blade.position.z = 0.6;
+        swordGroup.add(blade);
+
+        const hilt = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.12, 0.3, 8),
+          new THREE.MeshStandardMaterial({ color: 0xd35400 })
+        );
+        hilt.rotation.x = Math.PI / 2;
+        hilt.position.z = 1.25;
+        swordGroup.add(hilt);
+
+        const angle = hitBox.userData.angle;
+        const y = hitBox.userData.y;
+        swordGroup.position.set(Math.sin(angle) * 1.6, y, Math.cos(angle) * 1.6);
+        swordGroup.rotation.y = angle;
+
+        this.barrelSubGroup.add(swordGroup);
+        this.slots[index].insertedSword = swordGroup;
+
+        if (index === this.hitSlotIndex) {
+          this.triggerPopOutAndLand();
+        } else {
+          this.updateUI();
+        }
+      }
+
+      triggerPopOutAndLand() {
+        this.isGameOver = true;
+        this.isJumping = true;
+
+        soundManager.pauseBGM();
+        soundManager.playSlot('jump');
+
+        if (this.charPlane.geometry) this.charPlane.geometry.dispose();
+        this.charPlane.geometry = this.createJumpGeometry();
+        const char = album.getActiveCharacter();
+        this.updateTexture(char.jumpImg || DEFAULT_JUMP_PNG);
+
+        const startY = 1.6;
+        const targetLandY = -0.2;
+        const targetBarrelY = -1.0;
+        const peakHeight = 3.5;
+        const startTime = performance.now();
+        const duration = 1.5;
+        let hasLandedSoundPlayed = false;
+
+        const targetCharRotY = -this.mainGroup.rotation.y;
+
+        const animateJump = (time) => {
+          const elapsed = (time - startTime) / 1000;
+
+          const progress = Math.min(1.0, elapsed / 0.6);
+          const currentScale = 1.0 - (0.5 * progress);
+          const currentBarrelY = targetBarrelY * progress;
+
+          this.barrelSubGroup.scale.set(currentScale, currentScale, currentScale);
+          this.barrelSubGroup.position.y = currentBarrelY;
+
+          if (elapsed < 0.6) {
+            const p = elapsed / 0.6;
+            this.charPlane.position.y = startY + peakHeight * Math.sin(p * Math.PI / 2);
+            this.charPlane.rotation.z = Math.sin(p * Math.PI * 4) * 0.35;
+            this.charPlane.rotation.y = (1 - p) * Math.sin(p * Math.PI * 2) * 2.0 + (p * targetCharRotY);
+          } else if (elapsed < 1.1) {
+            const p = (elapsed - 0.6) / 0.5;
+            const curPeak = startY + peakHeight;
+            this.charPlane.position.y = curPeak - (curPeak - targetLandY) * (p * p);
+            this.charPlane.rotation.z = (1 - p) * 0.2;
+            this.charPlane.rotation.y = targetCharRotY;
+          } else if (elapsed < duration) {
+            if (!hasLandedSoundPlayed) {
+              soundManager.playSlot('land');
+              hasLandedSoundPlayed = true;
+            }
+            const p = (elapsed - 1.1) / 0.4;
+            const bounce = Math.abs(Math.sin(p * Math.PI * 2)) * 0.35 * (1 - p);
+            this.charPlane.position.y = targetLandY + bounce;
+            this.charPlane.rotation.z = 0;
+            this.charPlane.rotation.y = targetCharRotY;
+            const squash = 1 + (bounce * 0.2);
+            this.charPlane.scale.set(2 - squash, squash, 1);
+          } else {
+            this.charPlane.position.set(0, targetLandY, 0);
+            this.charPlane.rotation.set(0, targetCharRotY, 0);
+            this.charPlane.scale.set(1, 1, 1);
+            this.isJumping = false;
+            const banner = document.getElementById('gameover-banner');
+            if (banner) banner.classList.add('show');
+            return;
+          }
+
+          requestAnimationFrame(animateJump);
+        };
+        requestAnimationFrame(animateJump);
+      }
+
+      updateUI() {
+        const statusElem = document.getElementById('status-text');
+        if (!statusElem) return;
+        if (!this.isGameStarted) {
+          statusElem.textContent = 'ゲーム開始ボタンを押してください';
+          return;
+        }
+        const remaining = this.totalSlots - this.usedSlots.size;
+        statusElem.textContent = `残りスリット: ${remaining} / ${this.totalSlots}`;
+      }
+
+      initEvents() {
+        let isDragging = false, startX = 0, startY = 0, lastX = 0;
+        let downTarget = null;
+
+        const isModalOpen = () => {
+          const modal = document.getElementById('modal-settings');
+          return modal && modal.classList.contains('open');
+        };
+
+        const onDown = (x, y, target) => {
+          if (isModalOpen() || Date.now() < this.ignoreInputUntil) return;
+
+          // 3Dキャンバス以外での操作は無視
+          if (target && target !== this.renderer.domElement) {
+            return;
+          }
+
+          isDragging = true;
+          startX = x;
+          startY = y;
+          lastX = x;
+          downTarget = target;
+        };
+
+        const onMove = (x, y) => {
+          if (isModalOpen() || !isDragging) return;
+          this.mainGroup.rotation.y += (x - lastX) * 0.008;
+          lastX = x;
+        };
+
+        const onUp = (x, y, target) => {
+          if (!isDragging) return;
+          isDragging = false;
+
+          if (isModalOpen() || Date.now() < this.ignoreInputUntil) return;
+          if (downTarget && downTarget !== this.renderer.domElement) return;
+          if (target && target !== this.renderer.domElement) return;
+
+          if (Math.hypot(x - startX, y - startY) < 8) {
+            this.handleClick(x, y);
+          }
+        };
+
+        window.addEventListener('mousedown', (e) => onDown(e.clientX, e.clientY, e.target));
+        window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', (e) => onUp(e.clientX, e.clientY, e.target));
+
+        window.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) onDown(e.touches[0].clientX, e.touches[0].clientY, e.target);
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+          if (e.touches.length === 1) onMove(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+          if (e.changedTouches.length === 1) onUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e.target);
+        });
+
+        window.addEventListener('resize', () => {
+          this.camera.aspect = window.innerWidth / window.innerHeight;
+          this.camera.updateProjectionMatrix();
+          this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+      }
+
+      handleClick(clientX, clientY) {
+        const modal = document.getElementById('modal-settings');
+        if (modal && modal.classList.contains('open')) return;
+        if (Date.now() < this.ignoreInputUntil) return;
+
+        this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const intersects = this.raycaster.intersectObjects(this.slotHitBoxes);
+        if (intersects.length > 0) this.insertSword(intersects[0].object);
+      }
+
+      animate() {
+        requestAnimationFrame(() => this.animate());
+        if (!this.isGameOver && !this.isJumping && this.charPlane) {
+          this.charPlane.position.y = 1.6 + Math.sin(performance.now() * 0.003) * 0.04;
+        }
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    /* ==========================================================
+       7. UI制御 & 各種イベント連携
+       ========================================================== */
+    let game;
+    let audioEditor;
+
+    function renderBackgroundUI() {
+      const themeGrid = document.getElementById('bg-theme-grid');
+      if (!themeGrid) return;
+      themeGrid.innerHTML = '';
+      bgManager.themes.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'bg-theme-btn' + (bgManager.settings.themeId === t.id ? ' active' : '');
+        btn.style.background = t.gradient;
+        btn.textContent = t.name;
+        btn.onclick = () => {
+          bgManager.updateSettings({ themeId: t.id });
+          renderBackgroundUI();
+        };
+        themeGrid.appendChild(btn);
+      });
+
+      const patternGrid = document.getElementById('bg-pattern-grid');
+      if (!patternGrid) return;
+      patternGrid.innerHTML = '';
+      bgManager.patterns.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'bg-pattern-btn' + (bgManager.settings.patternId === p.id ? ' active' : '');
+        btn.textContent = p.name;
+        btn.onclick = () => {
+          bgManager.updateSettings({ patternId: p.id });
+          renderBackgroundUI();
+        };
+        patternGrid.appendChild(btn);
+      });
+
+      const bgAlbumGrid = document.getElementById('bg-album-grid');
+      if (!bgAlbumGrid) return;
+      bgAlbumGrid.innerHTML = '';
+
+      if (bgManager.bgImages.length === 0) {
+        bgAlbumGrid.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; padding:8px; grid-column:span 2;">保存された背景画像はありません。下のフォームから追加できます。</div>';
+      } else {
+        bgManager.bgImages.forEach(img => {
+          const card = document.createElement('div');
+          const isActive = bgManager.settings.activeBgImageId === img.id;
+          card.className = 'bg-album-card' + (isActive ? ' active' : '');
+          card.innerHTML = `
+            ${isActive ? '<span class="active-badge">適用中</span>' : ''}
+            <img class="bg-thumb" src="${img.dataUrl}">
+            <div class="album-name" title="${img.name}">${img.name}</div>
+            <div style="display:flex; gap:4px; width:100%; justify-content:center;">
+              <button class="btn btn-sm btn-select-bg" data-id="${img.id}" ${isActive ? 'disabled' : ''}>
+                ${isActive ? '選択中' : '選択'}
+              </button>
+              <button class="btn btn-sm btn-danger btn-del-bg" data-id="${img.id}">🗑️</button>
+            </div>
+          `;
+          bgAlbumGrid.appendChild(card);
+        });
+
+        document.querySelectorAll('.btn-select-bg').forEach(btn => {
+          btn.onclick = async () => {
+            await bgManager.setActiveBgImage(btn.getAttribute('data-id'));
+            renderBackgroundUI();
+            showToast('背景を適用しました！', '🖼️');
+          };
+        });
+
+        document.querySelectorAll('.btn-del-bg').forEach(btn => {
+          btn.onclick = async () => {
+            if (confirm('この背景画像をアルバムから削除しますか？')) {
+              await bgManager.deleteBgImage(btn.getAttribute('data-id'));
+              renderBackgroundUI();
+              showToast('背景画像を削除しました', '🗑️');
+            }
+          };
+        });
+      }
+
+      const clearBtn = document.getElementById('btn-clear-active-bg');
+      if (clearBtn) {
+        clearBtn.style.display = bgManager.settings.activeBgImageId ? 'inline-block' : 'none';
+        clearBtn.onclick = async () => {
+          await bgManager.clearActiveBgImage();
+          renderBackgroundUI();
+          showToast('背景画像を解除しました（テーマ色のみ表示）', '🎨');
+        };
+      }
+    }
+
+    function renderSoundSettings() {
+      document.querySelectorAll('.slot-toggle').forEach(toggle => {
+        const slot = toggle.getAttribute('data-slot');
+        toggle.checked = soundManager.toggles[slot] !== false;
+      });
+
+      document.querySelectorAll('.slot-vol-range').forEach(range => {
+        const slot = range.getAttribute('data-slot');
+        const val = soundManager.volumes[slot] !== undefined ? soundManager.volumes[slot] : 0.7;
+        range.value = val;
+        const display = document.querySelector(`.val-slot-vol[data-slot="${slot}"]`);
+        if (display) display.textContent = Math.round(val * 100) + '%';
+      });
+
+      document.querySelectorAll('.slot-select').forEach(select => {
+        const slot = select.getAttribute('data-slot');
+        select.innerHTML = slot === 'bgm' 
+          ? '<option value="default">🎵 デフォルトBGM（内蔵シンセ）</option>'
+          : '<option value="default">✨ デフォルト効果音</option>';
+
+        soundManager.sounds.forEach(snd => {
+          const opt = document.createElement('option');
+          opt.value = snd.id;
+          opt.textContent = `🎶 ${snd.name} (${snd.duration}s)`;
+          select.appendChild(opt);
+        });
+
+        select.value = soundManager.slots[slot] || 'default';
+      });
+
+      document.querySelectorAll('.btn-slot-preview').forEach(btn => {
+        btn.onclick = (e) => {
+          const slot = btn.getAttribute('data-slot');
+          soundManager.togglePreviewSlot(slot, btn);
+        };
+      });
+
+      const listContainer = document.getElementById('sound-library-list');
+      if (!listContainer) return;
+      listContainer.innerHTML = '';
+
+      if (soundManager.sounds.length === 0) {
+        listContainer.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; padding:8px;">保存されたカスタム音声/BGMはありません。</div>';
+        return;
+      }
+
+      soundManager.sounds.forEach(snd => {
+        const row = document.createElement('div');
+        row.className = 'sound-item-row';
+        row.innerHTML = `
+          <div>
+            <div class="sound-item-name">🎶 ${snd.name}</div>
+            <div class="sound-item-meta">長さ: ${snd.duration}s | ループ: ${snd.loopStart}s 〜 ${snd.loopEnd}s</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-sm btn-info btn-lib-preview" data-id="${snd.id}">▶ 試聴</button>
+            <a class="btn btn-sm btn-purple" href="${snd.dataUrl}" download="${snd.name}.wav" title="WAVダウンロード">📥</a>
+            <button class="btn btn-sm btn-danger btn-del-sound" data-id="${snd.id}">🗑️</button>
+          </div>
+        `;
+        listContainer.appendChild(row);
+      });
+
+      document.querySelectorAll('.btn-lib-preview').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.getAttribute('data-id');
+          soundManager.togglePreviewSound(id, btn);
+        };
+      });
+
+      document.querySelectorAll('.btn-del-sound').forEach(btn => {
+        btn.onclick = async () => {
+          if (confirm('この音声/BGMを削除しますか？')) {
+            soundManager.stopAllPreviews();
+            await soundManager.deleteSound(btn.getAttribute('data-id'));
+            renderSoundSettings();
+            showToast('音声を削除しました', '🗑️');
+          }
+        };
+      });
+    }
+
+    function renderAlbumUI() {
+      const albumGrid = document.getElementById('album-grid');
+      if (!albumGrid) return;
+      albumGrid.innerHTML = '';
+      album.characters.forEach(char => {
+        const card = document.createElement('div');
+        const isActive = char.id === album.activeId;
+        card.className = 'album-card' + (isActive ? ' active' : '');
+        card.innerHTML = `
+          ${isActive ? '<span class="active-badge">使用中</span>' : ''}
+          <div class="album-imgs">
+            <img class="album-thumb" src="${char.normalImg}" title="通常時">
+            <img class="album-thumb" src="${char.jumpImg}" title="飛び出し時">
+          </div>
+          <div class="album-name">${char.name}</div>
+          <div style="display:flex; gap:4px; width:100%; justify-content:center;">
+            <button class="btn btn-sm btn-select-char" data-id="${char.id}" ${isActive ? 'disabled' : ''}>
+              ${isActive ? '選択中' : '選択'}
+            </button>
+            ${!char.isDefault ? `<button class="btn btn-sm btn-danger btn-del-char" data-id="${char.id}">🗑️</button>` : ''}
+          </div>
+        `;
+        albumGrid.appendChild(card);
+      });
+
+      const activeChar = album.getActiveCharacter();
+      const scaleInput = document.getElementById('range-char-scale');
+      const jumpScaleInput = document.getElementById('range-char-jump-scale');
+      const offsetInput = document.getElementById('range-char-offset');
+
+      const scaleVal = activeChar.scale || 1.0;
+      const jumpScaleVal = activeChar.jumpScale !== undefined ? activeChar.jumpScale : 1.5;
+      const offsetVal = activeChar.normalOffsetY !== undefined ? activeChar.normalOffsetY : 0.5;
+
+      if (scaleInput) scaleInput.value = scaleVal;
+      if (jumpScaleInput) jumpScaleInput.value = jumpScaleVal;
+      if (offsetInput) offsetInput.value = offsetVal;
+
+      const valScale = document.getElementById('val-char-scale');
+      if (valScale) valScale.textContent = Math.round(scaleVal * 100) + '%';
+      const valJumpScale = document.getElementById('val-char-jump-scale');
+      if (valJumpScale) valJumpScale.textContent = Math.round(jumpScaleVal * 100) + '%';
+      const valOffset = document.getElementById('val-char-offset');
+      if (valOffset) valOffset.textContent = Math.round(offsetVal * 100) + '%';
+
+      document.querySelectorAll('.btn-select-char').forEach(btn => {
+        btn.onclick = async () => {
+          await album.setActiveCharacter(btn.getAttribute('data-id'));
+          if (game) game.applyActiveCharacter();
+          renderAlbumUI();
+        };
+      });
+
+      document.querySelectorAll('.btn-del-char').forEach(btn => {
+        btn.onclick = async () => {
+          if (confirm('このキャラクターを削除しますか？')) {
+            await album.deleteCharacter(btn.getAttribute('data-id'));
+            if (game) game.applyActiveCharacter();
+            renderAlbumUI();
+            showToast('キャラクターを削除しました', '🗑️');
+          }
+        };
+      });
+    }
+
+    async function exportBackupFile() {
+      const backupData = {
+        version: 5,
+        exportedAt: new Date().toISOString(),
+        characters: await appDB.getAll('characters'),
+        sounds: await appDB.getAll('sounds'),
+        bgImages: await appDB.getAll('bgImages'),
+        settings: await appDB.getAll('settings')
+      };
+
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `barrel_game_backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('端末にバックアップを保存しました！', '💾');
+    }
+
+    async function importBackupFile(file) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (data.characters) for (const char of data.characters) await appDB.setItem('characters', char);
+        if (data.sounds) for (const snd of data.sounds) await appDB.setItem('sounds', snd);
+        if (data.bgImages) for (const bg of data.bgImages) await appDB.setItem('bgImages', bg);
+        if (data.settings) for (const set of data.settings) await appDB.setItem('settings', set);
+
+        await album.init();
+        await soundManager.init();
+        await bgManager.init();
+        if (game) {
+          game.totalSlots = await appDB.getSetting('totalSlots', 16);
+          const sel = document.getElementById('select-slots');
+          if (sel) sel.value = game.totalSlots;
+          game.buildScene();
+          game.resetGame(false);
+        }
+        renderSoundSettings();
+        renderAlbumUI();
+        renderBackgroundUI();
+
+        showToast('バックアップから復元しました！', '🎉');
+      } catch (err) {
+        alert('ファイルの読み込みに失敗しました: ' + err.message);
+      }
+    }
+
+    /* =================== アプリ起動処理 =================== */
+    async function initApp() {
+      try {
+        await album.init();
+      } catch(e) { console.error('Album init error:', e); }
+
+      try {
+        await soundManager.init();
+      } catch(e) { console.error('SoundManager init error:', e); }
+
+      try {
+        await bgManager.init();
+      } catch(e) { console.error('BgManager init error:', e); }
+
+      try {
+        game = new PirateGame();
+        await game.init();
+      } catch(e) { console.error('Game init error:', e); }
+
+      try {
+        audioEditor = new AudioEditor(soundManager);
+      } catch(e) { console.error('AudioEditor init error:', e); }
+
+      // モーダル操作時のイベント伝播（バブリング）遮断
+      const modalBackdrop = document.getElementById('modal-settings');
+      if (modalBackdrop) {
+        ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend'].forEach(evt => {
+          modalBackdrop.addEventListener(evt, (e) => {
+            e.stopPropagation();
+          });
+        });
+      }
+
+      // ゲーム開始ボタン
+      const startBtn = document.getElementById('btn-start-game');
+      if (startBtn) {
+        startBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (game) game.startGame();
+        });
+      }
+
+      // タブ切り替え
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          soundManager.stopAllPreviews();
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          const tabId = btn.getAttribute('data-tab');
+          const pane = document.getElementById(tabId);
+          if (pane) pane.classList.add('active');
+
+          if (tabId === 'tab-sound-slots') renderSoundSettings();
+          else if (tabId === 'tab-characters') renderAlbumUI();
+          else if (tabId === 'tab-background') renderBackgroundUI();
+        });
+      });
+
+      // キャラクター通常時倍率スライダー（50%〜200%）
+      const rangeScale = document.getElementById('range-char-scale');
+      if (rangeScale) {
+        rangeScale.addEventListener('input', async (e) => {
+          const val = parseFloat(e.target.value);
+          const display = document.getElementById('val-char-scale');
+          if (display) display.textContent = Math.round(val * 100) + '%';
+          await album.updateActiveSettings({ scale: val });
+          if (game) game.applyActiveCharacter();
+        });
+      }
+
+      // キャラクター飛び出し時倍率スライダー（50%〜300%）
+      const rangeJumpScale = document.getElementById('range-char-jump-scale');
+      if (rangeJumpScale) {
+        rangeJumpScale.addEventListener('input', async (e) => {
+          const val = parseFloat(e.target.value);
+          const display = document.getElementById('val-char-jump-scale');
+          if (display) display.textContent = Math.round(val * 100) + '%';
+          await album.updateActiveSettings({ jumpScale: val });
+          if (game && game.isGameOver && !game.isJumping) {
+            if (game.charPlane.geometry) game.charPlane.geometry.dispose();
+            game.charPlane.geometry = game.createJumpGeometry();
+          }
+        });
+      }
+
+      // キャラクター頭出し位置調整スライダー（20%〜80%）
+      const rangeOffset = document.getElementById('range-char-offset');
+      if (rangeOffset) {
+        rangeOffset.addEventListener('input', async (e) => {
+          const val = parseFloat(e.target.value);
+          const display = document.getElementById('val-char-offset');
+          if (display) display.textContent = Math.round(val * 100) + '%';
+          await album.updateActiveSettings({ normalOffsetY: val });
+          if (game) game.applyActiveCharacter();
+        });
+      }
+
+      // 個別ON/OFFトグル
+      document.querySelectorAll('.slot-toggle').forEach(toggle => {
+        toggle.addEventListener('change', async (e) => {
+          const slot = e.target.getAttribute('data-slot');
+          soundManager.toggles[slot] = e.target.checked;
+          await appDB.setSetting('toggles', soundManager.toggles);
+          if (slot === 'bgm') {
+            if (e.target.checked && game && game.isGameStarted) soundManager.playBGM();
+            else soundManager.stopBGM(false);
+          }
+        });
+      });
+
+      // 音量スライダー
+      document.querySelectorAll('.slot-vol-range').forEach(range => {
+        range.addEventListener('input', async (e) => {
+          const slot = e.target.getAttribute('data-slot');
+          const val = parseFloat(e.target.value);
+          const display = document.querySelector(`.val-slot-vol[data-slot="${slot}"]`);
+          if (display) display.textContent = Math.round(val * 100) + '%';
+          await soundManager.setVolume(slot, val);
+        });
+      });
+
+      // スロット設定変更
+      document.querySelectorAll('.slot-select').forEach(sel => {
+        sel.addEventListener('change', async (e) => {
+          const slot = e.target.getAttribute('data-slot');
+          soundManager.slots[slot] = e.target.value;
+          await appDB.setSetting('slots', soundManager.slots);
+          if (slot === 'bgm' && game && game.isGameStarted) soundManager.restartBGM();
+        });
+      });
+
+      // 新規キャラクター登録
+      let newNormalData = null, newJumpData = null;
+      const inputNormal = document.getElementById('input-new-normal');
+      if (inputNormal) {
+        inputNormal.addEventListener('change', async (e) => {
+          if (e.target.files && e.target.files[0]) newNormalData = await CharacterAlbum.compressImage(e.target.files[0]);
+        });
+      }
+      const inputJump = document.getElementById('input-new-jump');
+      if (inputJump) {
+        inputJump.addEventListener('change', async (e) => {
+          if (e.target.files && e.target.files[0]) newJumpData = await CharacterAlbum.compressImage(e.target.files[0]);
+        });
+      }
+
+      const saveCharBtn = document.getElementById('btn-save-character');
+      if (saveCharBtn) {
+        saveCharBtn.addEventListener('click', async () => {
+          if (!newNormalData) {
+            alert('通常時画像を選択してください。');
+            return;
+          }
+          const nameInput = document.getElementById('new-char-name');
+          const name = (nameInput ? nameInput.value.trim() : '') || '新規キャラ';
+          await album.addCharacter(name, newNormalData, newJumpData || newNormalData);
+
+          if (nameInput) nameInput.value = '';
+          if (inputNormal) inputNormal.value = '';
+          if (inputJump) inputJump.value = '';
+          newNormalData = null;
+          newJumpData = null;
+
+          if (game) game.applyActiveCharacter();
+          renderAlbumUI();
+          showToast(`「${name}」を登録しました！`, '✨');
+        });
+      }
+
+      // 新規背景画像の登録
+      const saveBgBtn = document.getElementById('btn-save-bg-image');
+      if (saveBgBtn) {
+        saveBgBtn.addEventListener('click', async () => {
+          const fileInput = document.getElementById('input-new-bg-file');
+          const nameInput = document.getElementById('new-bg-name');
+          const file = fileInput ? fileInput.files[0] : null;
+
+          if (!file) {
+            alert('背景画像ファイルを選択してください。');
+            return;
+          }
+
+          const name = (nameInput ? nameInput.value.trim() : '') || 'カスタム背景';
+          const res = await CharacterAlbum.compressImage(file, 1280);
+          await bgManager.addBgImage(name, res.dataUrl);
+
+          if (fileInput) fileInput.value = '';
+          if (nameInput) nameInput.value = '';
+          renderBackgroundUI();
+          showToast(`背景「${name}」をアルバムに登録して適用しました！`, '🖼️');
+        });
+      }
+
+      // バックアップ操作
+      const exportBtn = document.getElementById('btn-export-backup');
+      if (exportBtn) exportBtn.addEventListener('click', exportBackupFile);
+
+      const importInput = document.getElementById('input-import-backup');
+      if (importInput) {
+        importInput.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files[0]) importBackupFile(e.target.files[0]);
+        });
+      }
+
+      // モーダル開閉
+      const settingsBtn = document.getElementById('btn-settings');
+      if (settingsBtn) {
+        settingsBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          renderSoundSettings();
+          renderAlbumUI();
+          renderBackgroundUI();
+          const modal = document.getElementById('modal-settings');
+          if (modal) modal.classList.add('open');
+        });
+      }
+
+      const closeBtn = document.getElementById('btn-close-modal');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          soundManager.stopAllPreviews();
+          const sel = document.getElementById('select-slots');
+          if (sel && game) {
+            const newSlots = parseInt(sel.value, 10);
+            if (newSlots !== game.totalSlots) {
+              game.totalSlots = newSlots;
+              await appDB.setSetting('totalSlots', newSlots);
+              game.buildScene();
+            }
+          }
+          if (game) game.applyActiveCharacter();
+          const modal = document.getElementById('modal-settings');
+          if (modal) modal.classList.remove('open');
+          if (game) game.ignoreInputUntil = Date.now() + 400;
+        });
+      }
+
+      // 全体音ON/OFFボタン
+      const masterSoundBtn = document.getElementById('btn-sound-master');
+      if (masterSoundBtn) {
+        masterSoundBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          soundManager.masterEnabled = !soundManager.masterEnabled;
+          masterSoundBtn.textContent = soundManager.masterEnabled ? '🔊 全体音' : '🔇 ミュート';
+          if (soundManager.masterEnabled && game && game.isGameStarted) soundManager.playBGM();
+          else soundManager.stopBGM(false);
+        });
+      }
+
+      const resetBtn = document.getElementById('btn-reset');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (game) game.resetGame(game.isGameStarted);
+        });
+      }
+
+      const restartBannerBtn = document.getElementById('btn-restart-banner');
+      if (restartBannerBtn) {
+        restartBannerBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (game) game.resetGame(true);
+        });
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+  </script>
+</body>
+</html>
