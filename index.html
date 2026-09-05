@@ -3,10 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>ドキドキ樽ゲーム</title>
-<link rel="apple-touch-icon" href="./apple-touch-icon.png">
-  <link rel="icon" href="apple-touch-icon.png">
-  
+  <title>ドキドキ樽ゲーム 3D - 完全版</title>
   <!-- Three.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <style>
@@ -1147,7 +1144,7 @@
 
   <script>
     /* ==========================================================
-       Canvas roundRect ポリフィル（古いiOS / ブラウザ対応）
+       Canvas roundRect ポリフィル
        ========================================================== */
     if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
       CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, radii) {
@@ -1272,9 +1269,7 @@
               resolve();
             }
           });
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       }
 
       async deleteItem(storeName, key) {
@@ -1296,9 +1291,7 @@
               resolve();
             }
           });
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       }
 
       async getSetting(key, defaultValue) {
@@ -1457,7 +1450,7 @@
     const bgManager = new BackgroundManager();
 
     /* ==========================================================
-       2. デフォルトキャラクター（安全な高解像度PNG生成）
+       2. デフォルトキャラクター
        ========================================================== */
     function generateDefaultCharacterPNG(isJump = false) {
       const canvas = document.createElement('canvas');
@@ -1578,7 +1571,7 @@
           ctx.fill();
         }
       } catch (err) {
-        console.warn('Character generator error, using simple fallback:', err);
+        console.warn('Character generator error:', err);
       }
 
       return canvas.toDataURL('image/png');
@@ -2402,7 +2395,7 @@
     }
 
     /* ==========================================================
-       5. キャラクターアルバム管理 (安全なフォールバック対応)
+       5. キャラクターアルバム管理
        ========================================================== */
     class CharacterAlbum {
       constructor() {
@@ -2514,7 +2507,7 @@
     const album = new CharacterAlbum();
 
     /* ==========================================================
-       6. 3Dゲームマネージャー (サイズ動的適用 & 入力完全制御)
+       6. 3Dゲームマネージャー (回転・アスペクト比対応＆裏面貫通防止)
        ========================================================== */
     class PirateGame {
       constructor() {
@@ -2526,6 +2519,7 @@
         this.isJumping = false;
         this.isGameStarted = false;
         this.ignoreInputUntil = 0;
+        this.barrelBody = null;
       }
 
       async init() {
@@ -2539,6 +2533,7 @@
         this.buildScene();
         this.initEvents();
         this.resetGame(false);
+        this.handleResize();
         this.animate();
       }
 
@@ -2585,7 +2580,6 @@
         this.scene.add(shadowPlane);
       }
 
-      // 通常時ジオメトリ（アスペクト比維持 ＆ 頭出し位置オフセット適用）
       createNormalGeometry() {
         const char = album.getActiveCharacter();
         const aspect = char.normalAspect || 1.0;
@@ -2597,7 +2591,7 @@
         const w = (baseH * aspect);
 
         const geo = new THREE.PlaneGeometry(w, visibleH);
-        geo.translate(0, visibleH / 2, 0); // 足元原点
+        geo.translate(0, visibleH / 2, 0);
 
         const uv = geo.attributes.uv;
         for (let i = 0; i < uv.count; i++) {
@@ -2608,7 +2602,6 @@
         return geo;
       }
 
-      // 飛び出し時ジオメトリ（任意設定の飛び出しサイズ適用）
       createJumpGeometry() {
         const char = album.getActiveCharacter();
         const aspect = char.jumpAspect || char.normalAspect || 1.0;
@@ -2618,7 +2611,7 @@
         const w = baseH * aspect;
 
         const geo = new THREE.PlaneGeometry(w, baseH);
-        geo.translate(0, baseH / 2, 0); // 足元原点
+        geo.translate(0, baseH / 2, 0);
         return geo;
       }
 
@@ -2629,22 +2622,25 @@
 
         const barrelGeo = new THREE.CylinderGeometry(1.6, 1.6, 3.2, 32);
         const barrelMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.6, metalness: 0.1 });
-        const barrelBody = new THREE.Mesh(barrelGeo, barrelMat);
-        barrelBody.castShadow = true;
-        barrelBody.receiveShadow = true;
-        this.barrelSubGroup.add(barrelBody);
+        this.barrelBody = new THREE.Mesh(barrelGeo, barrelMat);
+        this.barrelBody.castShadow = true;
+        this.barrelBody.receiveShadow = true;
+        this.barrelBody.userData = { isBarrelBody: true };
+        this.barrelSubGroup.add(this.barrelBody);
 
         const topCap = new THREE.Mesh(
           new THREE.CylinderGeometry(1.58, 1.58, 0.05, 32),
           new THREE.MeshStandardMaterial({ color: 0x5c2c16 })
         );
         topCap.position.y = 1.6;
+        topCap.userData = { isBarrelBody: true };
         this.barrelSubGroup.add(topCap);
 
         const ringMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.3 });
         [-1.2, -0.4, 0.4, 1.2].forEach(y => {
           const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.62, 0.1, 32), ringMat);
           ring.position.y = y;
+          ring.userData = { isBarrelBody: true };
           this.barrelSubGroup.add(ring);
         });
 
@@ -2675,10 +2671,11 @@
           slot.position.set(Math.sin(angle) * radius, y, Math.cos(angle) * radius);
           slot.rotation.y = angle;
 
-          const hitBox = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), new THREE.MeshBasicMaterial({ visible: false }));
-          hitBox.position.copy(slot.position);
-          hitBox.rotation.copy(slot.rotation);
-          hitBox.userData = { slotIndex: i, angle: angle, y: y };
+          // 表面よりわずかに外側(1.63)に配置し、木製ボディよりも手前で判定されるように設定
+          const hitBox = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.55, 0.12), new THREE.MeshBasicMaterial({ visible: false }));
+          hitBox.position.set(Math.sin(angle) * 1.63, y, Math.cos(angle) * 1.63);
+          hitBox.rotation.y = angle;
+          hitBox.userData = { slotIndex: i, angle: angle, y: y, isSlotHitBox: true };
 
           this.barrelSubGroup.add(slot);
           this.barrelSubGroup.add(hitBox);
@@ -2873,6 +2870,29 @@
         statusElem.textContent = `残りスリット: ${remaining} / ${this.totalSlots}`;
       }
 
+      handleResize() {
+        if (!this.renderer || !this.camera) return;
+        const container = this.container || document.getElementById('canvas-container');
+        const w = (container && container.clientWidth) ? container.clientWidth : window.innerWidth;
+        const h = (container && container.clientHeight) ? container.clientHeight : window.innerHeight;
+        if (w <= 0 || h <= 0) return;
+
+        const aspect = w / h;
+        this.camera.aspect = aspect;
+
+        // 横画面（aspect >= 1.0）の時は樽が上下に見切れないよう少し引き気味に自動調整
+        if (aspect < 1.0) {
+          this.camera.position.set(0, 2.6, 8.6);
+        } else {
+          this.camera.position.set(0, 2.2, 9.4);
+        }
+        this.camera.lookAt(0, 0.4, 0);
+        this.camera.updateProjectionMatrix();
+
+        this.renderer.setSize(w, h);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      }
+
       initEvents() {
         let isDragging = false, startX = 0, startY = 0, lastX = 0;
         let downTarget = null;
@@ -2885,7 +2905,6 @@
         const onDown = (x, y, target) => {
           if (isModalOpen() || Date.now() < this.ignoreInputUntil) return;
 
-          // 3Dキャンバス以外での操作は無視
           if (target && target !== this.renderer.domElement) {
             return;
           }
@@ -2932,11 +2951,15 @@
           if (e.changedTouches.length === 1) onUp(e.changedTouches[0].clientX, e.changedTouches[0].clientY, e.target);
         });
 
-        window.addEventListener('resize', () => {
-          this.camera.aspect = window.innerWidth / window.innerHeight;
-          this.camera.updateProjectionMatrix();
-          this.renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        // 画面回転およびリサイズ時の確実な追従（iOS回転アニメーション完了ラグに対応）
+        const onResizeHandler = () => {
+          this.handleResize();
+          setTimeout(() => this.handleResize(), 100);
+          setTimeout(() => this.handleResize(), 300);
+          setTimeout(() => this.handleResize(), 500);
+        };
+        window.addEventListener('resize', onResizeHandler);
+        window.addEventListener('orientationchange', onResizeHandler);
       }
 
       handleClick(clientX, clientY) {
@@ -2944,11 +2967,48 @@
         if (modal && modal.classList.contains('open')) return;
         if (Date.now() < this.ignoreInputUntil) return;
 
-        this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
-        this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        if (
+          clientX < rect.left || clientX > rect.right ||
+          clientY < rect.top || clientY > rect.bottom
+        ) {
+          return;
+        }
+
+        // キャンバスの正確なバウンディングレクトから正規化デバイス座標(-1〜+1)を算出
+        this.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
         this.raycaster.setFromCamera(this.mouse, this.camera);
-        const intersects = this.raycaster.intersectObjects(this.slotHitBoxes);
-        if (intersects.length > 0) this.insertSword(intersects[0].object);
+
+        // 樽の胴体やフタ・リングも遮蔽物としてレイキャストに含める（裏面スリットへの貫通を完全防止）
+        const raycastTargets = [
+          ...this.slotHitBoxes,
+          this.barrelBody,
+          ...this.barrelSubGroup.children.filter(c => c.userData && c.userData.isBarrelBody)
+        ];
+
+        const intersects = this.raycaster.intersectObjects(raycastTargets, false);
+        if (intersects.length > 0) {
+          const firstHit = intersects[0].object;
+
+          // 一番手前がスリットHitBoxであり、かつカメラ側（表側）を向いている場合のみ剣を刺す
+          if (firstHit.userData && firstHit.userData.isSlotHitBox) {
+            const worldPos = new THREE.Vector3();
+            firstHit.getWorldPosition(worldPos);
+
+            // カメラへの方向ベクトル
+            const toCamera = this.camera.position.clone().sub(worldPos).normalize();
+
+            // スリットの正面（外向き法線）ベクトル
+            const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(firstHit.getWorldQuaternion(new THREE.Quaternion()));
+
+            // 表側を向いている場合のみ有効
+            if (toCamera.dot(normal) > 0.15) {
+              this.insertSword(firstHit);
+            }
+          }
+        }
       }
 
       animate() {
@@ -3239,6 +3299,7 @@
           if (sel) sel.value = game.totalSlots;
           game.buildScene();
           game.resetGame(false);
+          game.handleResize();
         }
         renderSoundSettings();
         renderAlbumUI();
@@ -3273,7 +3334,6 @@
         audioEditor = new AudioEditor(soundManager);
       } catch(e) { console.error('AudioEditor init error:', e); }
 
-      // モーダル操作時のイベント伝播（バブリング）遮断
       const modalBackdrop = document.getElementById('modal-settings');
       if (modalBackdrop) {
         ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend'].forEach(evt => {
@@ -3283,7 +3343,6 @@
         });
       }
 
-      // ゲーム開始ボタン
       const startBtn = document.getElementById('btn-start-game');
       if (startBtn) {
         startBtn.addEventListener('click', (e) => {
@@ -3292,7 +3351,6 @@
         });
       }
 
-      // タブ切り替え
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -3310,7 +3368,6 @@
         });
       });
 
-      // キャラクター通常時倍率スライダー（50%〜200%）
       const rangeScale = document.getElementById('range-char-scale');
       if (rangeScale) {
         rangeScale.addEventListener('input', async (e) => {
@@ -3322,7 +3379,6 @@
         });
       }
 
-      // キャラクター飛び出し時倍率スライダー（50%〜300%）
       const rangeJumpScale = document.getElementById('range-char-jump-scale');
       if (rangeJumpScale) {
         rangeJumpScale.addEventListener('input', async (e) => {
@@ -3337,7 +3393,6 @@
         });
       }
 
-      // キャラクター頭出し位置調整スライダー（20%〜80%）
       const rangeOffset = document.getElementById('range-char-offset');
       if (rangeOffset) {
         rangeOffset.addEventListener('input', async (e) => {
@@ -3349,7 +3404,6 @@
         });
       }
 
-      // 個別ON/OFFトグル
       document.querySelectorAll('.slot-toggle').forEach(toggle => {
         toggle.addEventListener('change', async (e) => {
           const slot = e.target.getAttribute('data-slot');
@@ -3362,7 +3416,6 @@
         });
       });
 
-      // 音量スライダー
       document.querySelectorAll('.slot-vol-range').forEach(range => {
         range.addEventListener('input', async (e) => {
           const slot = e.target.getAttribute('data-slot');
@@ -3373,7 +3426,6 @@
         });
       });
 
-      // スロット設定変更
       document.querySelectorAll('.slot-select').forEach(sel => {
         sel.addEventListener('change', async (e) => {
           const slot = e.target.getAttribute('data-slot');
@@ -3383,7 +3435,6 @@
         });
       });
 
-      // 新規キャラクター登録
       let newNormalData = null, newJumpData = null;
       const inputNormal = document.getElementById('input-new-normal');
       if (inputNormal) {
@@ -3421,7 +3472,6 @@
         });
       }
 
-      // 新規背景画像の登録
       const saveBgBtn = document.getElementById('btn-save-bg-image');
       if (saveBgBtn) {
         saveBgBtn.addEventListener('click', async () => {
@@ -3445,7 +3495,6 @@
         });
       }
 
-      // バックアップ操作
       const exportBtn = document.getElementById('btn-export-backup');
       if (exportBtn) exportBtn.addEventListener('click', exportBackupFile);
 
@@ -3456,7 +3505,6 @@
         });
       }
 
-      // モーダル開閉
       const settingsBtn = document.getElementById('btn-settings');
       if (settingsBtn) {
         settingsBtn.addEventListener('click', (e) => {
@@ -3490,7 +3538,6 @@
         });
       }
 
-      // 全体音ON/OFFボタン
       const masterSoundBtn = document.getElementById('btn-sound-master');
       if (masterSoundBtn) {
         masterSoundBtn.addEventListener('click', (e) => {
